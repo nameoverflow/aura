@@ -10,6 +10,14 @@ Aura uses `Result a e` for all error handling — no exceptions, no panics (exce
 - **P1-03: Concepts** — `From` concept for error conversion
 - **P0-04: Basic Types** — type checking of `?` expressions
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented (typing semantics):** `?` support for `Result` and `Option`, with return-type compatibility checks and error-conversion validation.
+- **Implemented:** Auto-`From`-style conversion discovery from unique single-payload sum variants, plus manual `From` concept-method fallback during conversion checks.
+- **Implemented:** Clear type errors when `?` is used with unsupported container/return combinations.
+- **Partial/Deferred:** `Into` auto-derivation and dedicated panic/error-runtime integration are not fully implemented.
+- **Partial/Deferred:** Runtime/codegen lowering of `?` behavior remains less complete than front-end/typechecker support.
+
 ## Design Decisions
 
 ### The `?` Operator

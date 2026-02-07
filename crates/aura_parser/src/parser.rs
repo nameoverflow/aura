@@ -222,6 +222,22 @@ impl Parser {
             None
         };
 
+        let effects = if self.check(&TokenKind::LBracket) {
+            self.parse_effect_list()?
+        } else {
+            Vec::new()
+        };
+
+        let mut requires = Vec::new();
+        while self.eat(&TokenKind::Requires) {
+            requires.push(self.parse_contract_expr()?);
+        }
+
+        let mut ensures = Vec::new();
+        while self.eat(&TokenKind::Ensures) {
+            ensures.push(self.parse_contract_expr()?);
+        }
+
         self.expect(&TokenKind::Assign)?;
         let body = self.parse_expr()?;
 
@@ -230,6 +246,9 @@ impl Parser {
             name,
             params,
             return_type,
+            effects,
+            requires,
+            ensures,
             body,
             is_pub,
             is_async,
@@ -283,7 +302,15 @@ impl Parser {
         self.expect(&TokenKind::Assign)?;
 
         // Check for struct vs sum type vs refined type
-        let kind = if self.check(&TokenKind::LBrace) {
+        let kind = if self.is_refined_type_def_ahead() {
+            let base = self.parse_type_expr()?;
+            self.expect(&TokenKind::Where)?;
+            let constraint = self.parse_expr()?;
+            TypeDefKind::Refined {
+                base_type: base,
+                constraint,
+            }
+        } else if self.check(&TokenKind::LBrace) {
             // Struct type
             self.advance();
             let mut fields = Vec::new();
@@ -312,6 +339,9 @@ impl Parser {
                 let mut fields = Vec::new();
                 // Variant payloads: each field is a type atom (use parens for complex types)
                 while self.is_type_atom_start() && !self.check(&TokenKind::Pipe) {
+                    if self.is_top_level_type_annotation_start() {
+                        break;
+                    }
                     fields.push(self.parse_type_atom()?);
                 }
                 let vend = fields.last().map(|f| f.span()).unwrap_or(vspan);
@@ -688,13 +718,22 @@ impl Parser {
 
         if self.eat(&TokenKind::Arrow) {
             let ret = self.parse_type_function()?;
-            let span = first.span().merge(ret.span());
+            let effects = if self.check(&TokenKind::LBracket) {
+                Some(self.parse_effect_list()?)
+            } else {
+                None
+            };
+            let end_span = effects
+                .as_ref()
+                .and_then(|e| e.last().map(|x| x.span))
+                .unwrap_or_else(|| ret.span());
+            let span = first.span().merge(end_span);
             // If first is a product, its elements are the params
             let params = match first {
                 TypeExpr::Product(ts, _) => ts,
                 other => vec![other],
             };
-            Ok(TypeExpr::Function(params, Box::new(ret), span))
+            Ok(TypeExpr::Function(params, Box::new(ret), effects, span))
         } else {
             Ok(first)
         }
@@ -1483,6 +1522,79 @@ impl Parser {
         Ok(fields)
     }
 
+    fn parse_effect_list(&mut self) -> Result<Vec<EffectRef>, ParseError> {
+        self.expect(&TokenKind::LBracket)?;
+        let mut effects = Vec::new();
+        if !self.check(&TokenKind::RBracket) {
+            loop {
+                effects.push(self.parse_effect_ref()?);
+                if !self.eat(&TokenKind::Comma) {
+                    break;
+                }
+                if self.check(&TokenKind::RBracket) {
+                    break;
+                }
+            }
+        }
+        self.expect(&TokenKind::RBracket)?;
+        Ok(effects)
+    }
+
+    fn parse_effect_ref(&mut self) -> Result<EffectRef, ParseError> {
+        let start = self.current_span();
+        let (mut name, mut end) = self.any_ident()?;
+        while self.eat(&TokenKind::Dot) {
+            let (seg, seg_span) = self.any_ident()?;
+            name.push('.');
+            name.push_str(&seg);
+            end = seg_span;
+        }
+        Ok(EffectRef {
+            name,
+            span: start.merge(end),
+        })
+    }
+
+    fn parse_contract_expr(&mut self) -> Result<Expr, ParseError> {
+        // Contracts are single expressions terminated by the next clause keyword or '='.
+        // Start at precedence 2 so top-level assignment (`=`) is not consumed.
+        self.parse_expr_bp(2)
+    }
+
+    fn is_refined_type_def_ahead(&self) -> bool {
+        let mut i = self.pos;
+        let mut paren_depth = 0i32;
+        while i < self.tokens.len() {
+            match &self.tokens[i].kind {
+                TokenKind::LParen => paren_depth += 1,
+                TokenKind::RParen => paren_depth = (paren_depth - 1).max(0),
+                TokenKind::Where if paren_depth == 0 => return true,
+                TokenKind::Pipe if paren_depth == 0 => return false,
+                TokenKind::Def
+                | TokenKind::Type
+                | TokenKind::Concept
+                | TokenKind::Instance
+                | TokenKind::Use
+                | TokenKind::Module
+                | TokenKind::Pub
+                | TokenKind::Eof
+                    if paren_depth == 0 =>
+                {
+                    return false;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        false
+    }
+
+    fn is_top_level_type_annotation_start(&self) -> bool {
+        matches!(self.peek(), TokenKind::Ident(_))
+            && self.pos + 1 < self.tokens.len()
+            && matches!(self.tokens[self.pos + 1].kind, TokenKind::Colon)
+    }
+
     fn is_lambda_ahead(&self) -> bool {
         // Look ahead to determine if this is a lambda: (params) -> ...
         // Heuristic: if after matching parens we see ->, it's a lambda
@@ -2004,6 +2116,38 @@ mod tests {
                 assert!(matches!(ta.ty, TypeExpr::Forall(_, _, _)));
             }
             _ => panic!("expected type annotation"),
+        }
+    }
+
+    #[test]
+    fn test_parse_function_type_effects() {
+        let module = parse_module_str("map: List a * (a -> b [e]) -> List b [e]\ndef map(xs, f) = xs");
+        match &module.items[0] {
+            Item::TypeAnnotation(ta) => match &ta.ty {
+                TypeExpr::Function(_, _, Some(effects), _) => {
+                    assert_eq!(effects.len(), 1);
+                    assert_eq!(effects[0].name, "e");
+                }
+                _ => panic!("expected function type with effects"),
+            },
+            _ => panic!("expected type annotation"),
+        }
+    }
+
+    #[test]
+    fn test_parse_fn_effects_and_contracts() {
+        let module = parse_module_str(
+            "def f(x: Int) -> Int [Net, Log] requires x > 0 ensures result > 0 = x",
+        );
+        match &module.items[0] {
+            Item::Function(f) => {
+                assert_eq!(f.effects.len(), 2);
+                assert_eq!(f.effects[0].name, "Net");
+                assert_eq!(f.effects[1].name, "Log");
+                assert_eq!(f.requires.len(), 1);
+                assert_eq!(f.ensures.len(), 1);
+            }
+            _ => panic!("expected function"),
         }
     }
 

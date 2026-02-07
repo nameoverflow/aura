@@ -10,6 +10,13 @@ Aura supports methods through `instance` blocks. There are two kinds: **inherent
 - **P1-01: Algebraic Types** — types that have methods
 - **P0-03: Name Resolution** — method name lookup
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented:** Inherent instance blocks, concept instance blocks, method/associated-function type checking, `Self` resolution in instance/concept contexts, method resolution priority (inherent over concept), ambiguity diagnostics, and pipeline `.method(...)` parser sugar.
+- **Implemented:** Associated functions via `Type.name(...)` are resolved and type-checked.
+- **Partial:** Mutable `self` is effectively rejected by grammar/parameter rules rather than a dedicated semantic diagnostic.
+- **Deferred:** Full method dispatch code generation for all method forms is still incomplete.
+
 ## Design Decisions
 
 ### Inherent Methods

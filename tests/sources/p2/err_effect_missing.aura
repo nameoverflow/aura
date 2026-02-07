@@ -1,0 +1,4 @@
+fetch: Int -> Int [Net]
+def fetch(x) = x
+
+def pure(x: Int) -> Int = fetch(x)

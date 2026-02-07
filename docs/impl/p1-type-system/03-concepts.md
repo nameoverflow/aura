@@ -10,6 +10,14 @@ Concepts are Aura's mechanism for ad-hoc polymorphism (similar to Rust traits, H
 - **P1-01: Algebraic Types** — types that implement concepts
 - **P0-03: Name Resolution** — resolving concept/instance names
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented:** Concept/instance parsing, concept and instance tables in type checking, superclass requirement checks, duplicate instance detection, concept-bound enforcement for `forall`, associated type declarations/bindings (including defaults), and explicit concept method disambiguation (`Concept.method(value, ...)`).
+- **Implemented (type level):** Operator-to-concept resolution for arithmetic/comparison in type checking.
+- **Partial:** Coherence currently enforces overlap checks and superclass constraints, but full module-level orphan-rule enforcement is not fully modeled.
+- **Partial/Deferred:** Default concept methods are recognized at signature level; full executable default-body dispatch/codegen remains incomplete.
+- **Deferred:** Auto-derive (`Eq`, `Debug`, etc.) and full dictionary/runtime dispatch strategies are not fully implemented.
+
 ## Design Decisions
 
 ### Concept Definition

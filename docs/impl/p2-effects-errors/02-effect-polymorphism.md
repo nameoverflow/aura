@@ -11,6 +11,13 @@ Effect polymorphism allows effect variables (like type variables) to be universa
 - **P2-01: Effect System** — basic effect checking
 - **P1-02: Generics** — implicit quantification applies to effect variables too
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented:** Effect variables in effect position (e.g. `[e]`) for function type annotations, set-based instantiation, and propagation through higher-order calls.
+- **Implemented:** Callback effect capture and binding to effect variables at call sites, including union-style combination through set operations.
+- **Partial:** The implementation is annotation-driven for higher-order effect polymorphism; broader inference scenarios remain limited.
+- **Design choice implemented:** Set-based effect semantics (not row-polymorphic effects).
+
 ## Design Decisions
 
 ### Effect Variables

@@ -38,6 +38,9 @@ pub struct FnDef {
     pub name: String,
     pub params: Vec<Param>,
     pub return_type: Option<TypeExpr>,
+    pub effects: Vec<EffectRef>,
+    pub requires: Vec<Expr>,
+    pub ensures: Vec<Expr>,
     pub body: Expr,
     pub is_pub: bool,
     pub is_async: bool,
@@ -166,7 +169,7 @@ pub enum TypeExpr {
     Named(String, Span),
     App(Box<TypeExpr>, Vec<TypeExpr>, Span),
     Product(Vec<TypeExpr>, Span),
-    Function(Vec<TypeExpr>, Box<TypeExpr>, Span),
+    Function(Vec<TypeExpr>, Box<TypeExpr>, Option<Vec<EffectRef>>, Span),
     Forall(Vec<ConceptConstraint>, Box<TypeExpr>, Span),
     Unit(Span),
 }
@@ -178,13 +181,19 @@ pub struct ConceptConstraint {
     pub span: Span,
 }
 
+#[derive(Debug, Clone)]
+pub struct EffectRef {
+    pub name: String,
+    pub span: Span,
+}
+
 impl TypeExpr {
     pub fn span(&self) -> Span {
         match self {
             TypeExpr::Named(_, s) => *s,
             TypeExpr::App(_, _, s) => *s,
             TypeExpr::Product(_, s) => *s,
-            TypeExpr::Function(_, _, s) => *s,
+            TypeExpr::Function(_, _, _, s) => *s,
             TypeExpr::Forall(_, _, s) => *s,
             TypeExpr::Unit(s) => *s,
         }

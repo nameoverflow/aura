@@ -102,6 +102,7 @@ impl Resolver {
             "List",
             "Map",
             "Set",
+            "ConstraintError",
         ] {
             let id = resolver.fresh_id();
             resolver.scope.define(ty.to_string(), id);
@@ -306,7 +307,27 @@ impl Resolver {
                 if let Some(ret) = &f.return_type {
                     self.resolve_type_expr(ret);
                 }
+                for req in &f.requires {
+                    self.resolve_expr(req);
+                }
                 self.resolve_expr(&f.body);
+                if !f.ensures.is_empty() {
+                    let result_id = self.fresh_id();
+                    self.scope.define("result".into(), result_id);
+                    self.defs.insert(
+                        result_id,
+                        DefInfo {
+                            id: result_id,
+                            name: "result".into(),
+                            kind: DefKind::Variable,
+                            span: f.span,
+                            is_pub: false,
+                        },
+                    );
+                    for ens in &f.ensures {
+                        self.resolve_expr(ens);
+                    }
+                }
                 self.scope.pop();
             }
             Item::TypeDef(td) => match &td.kind {
@@ -327,7 +348,21 @@ impl Resolver {
                     constraint,
                 } => {
                     self.resolve_type_expr(base_type);
+                    self.scope.push();
+                    let self_id = self.fresh_id();
+                    self.scope.define("self".into(), self_id);
+                    self.defs.insert(
+                        self_id,
+                        DefInfo {
+                            id: self_id,
+                            name: "self".into(),
+                            kind: DefKind::Variable,
+                            span: td.span,
+                            is_pub: false,
+                        },
+                    );
                     self.resolve_expr(constraint);
+                    self.scope.pop();
                 }
             },
             Item::ConceptDef(cd) => self.resolve_concept_def(cd),
@@ -515,7 +550,7 @@ impl Resolver {
                     self.resolve_type_expr(t);
                 }
             }
-            TypeExpr::Function(params, ret, _) => {
+            TypeExpr::Function(params, ret, _, _) => {
                 for p in params {
                     self.resolve_type_expr(p);
                 }
@@ -954,6 +989,23 @@ mod tests {
     #[test]
     fn test_resolve_for_pattern() {
         let result = resolve_str("def test() -> Int = { for _ in 0..10 { 0 }; 1 }");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_resolve_refined_type_self_constraint() {
+        let result = resolve_str(
+            "type NonZero = Int where self != 0\n\
+             def test(x: Int) -> Int = x",
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_resolve_function_contracts() {
+        let result = resolve_str(
+            "def f(x: Int) -> Int requires x > 0 ensures result > 0 = x",
+        );
         assert!(result.is_ok());
     }
 }

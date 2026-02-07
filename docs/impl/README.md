@@ -22,6 +22,15 @@ P0 ──> P1 ──> P2 ──> P3
 
 P0 is the absolute foundation (including basic LLVM codegen). P1 builds the full type system on P0's base. P2 adds the effect and error layers. P3 adds the GC runtime, closures, and async. P4 is largely parallelizable once P2 is underway.
 
+## Current Status (as of February 7, 2026)
+
+| Tier | Status | Notes |
+|------|--------|-------|
+| **P1** | **Largely Implemented** | Parser/resolver/typechecker support ADTs, generics, concepts, methods, and expanded pattern forms. Some codegen/runtime pieces are still deferred. |
+| **P2** | **Partially Implemented (front-end heavy)** | Effects, effect polymorphism, `?`, auto-`From`-style conversion checks, refined-type typing hooks, and contract parsing/typechecking are implemented in the front-end/typechecker; runtime/codegen enforcement is still partial. |
+| **P3** | **Not Started** | Planned only. |
+| **P4** | **Not Started** | Planned only. |
+
 ## Milestones
 
 What a working system looks like after completing each tier:

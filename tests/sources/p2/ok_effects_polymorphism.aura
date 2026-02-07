@@ -1,0 +1,7 @@
+map1: (Int -> Int [e]) * Int -> Int [e]
+def map1(f, x) = f(x)
+
+fetch: Int -> Int [Net]
+def fetch(x) = x
+
+def caller(x: Int) -> Int [Net] = map1(fetch, x)

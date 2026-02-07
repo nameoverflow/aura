@@ -1,0 +1,15 @@
+type IoError = Failed
+type AppError = Io IoError | Constraint ConstraintError | Other String
+type NonZero = Int where self != 0
+
+load: Int -> Result Int IoError
+def load(x) = Err(Failed)
+
+def run(x: Int) -> Result Int AppError [Net]
+  requires x >= 0
+  ensures true
+= {
+  let _nz = NonZero.new(1)?
+  let v = load(x)?
+  Ok(v)
+}

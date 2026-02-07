@@ -96,6 +96,49 @@ struct ConceptInstanceInfo {
     span: Span,
 }
 
+#[derive(Debug, Clone)]
+struct RefinedTypeInfo {
+    type_args: Vec<Type>,
+    base_type: Type,
+    constraint: Expr,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Effect {
+    DbRead,
+    DbWrite,
+    Net,
+    FsRead,
+    FsWrite,
+    Log,
+    Time,
+    Random,
+    Env,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum EffectTerm {
+    Concrete(Effect),
+    Var(String),
+}
+
+#[derive(Debug, Clone, Default)]
+struct EffectSpec {
+    terms: Vec<EffectTerm>,
+}
+
+#[derive(Debug, Clone)]
+struct FunctionEffectScheme {
+    declared: EffectSpec,
+    param_effects: Vec<Option<EffectSpec>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct EffectContext {
+    allowed: HashSet<Effect>,
+    vars: HashSet<String>,
+}
+
 pub struct TypeChecker {
     next_var: u32,
     substitution: HashMap<TypeVarId, Type>,
@@ -108,16 +151,23 @@ pub struct TypeChecker {
     struct_info: HashMap<String, StructTypeInfo>,
     variant_info: HashMap<String, VariantTypeInfo>,
     variants_by_parent: HashMap<String, Vec<String>>,
+    refined_info: HashMap<String, RefinedTypeInfo>,
+    auto_from_variants: HashMap<(String, String), String>,
     concepts: HashMap<String, ConceptInfo>,
     inherent_methods: HashMap<String, HashMap<String, TypeScheme>>,
     associated_functions: HashMap<String, HashMap<String, TypeScheme>>,
     concept_instances: HashMap<(String, String), ConceptInstanceInfo>,
+    fn_effects: HashMap<DefId, FunctionEffectScheme>,
 
     // Kept for typed output compatibility
     struct_fields: HashMap<String, Vec<(String, Type)>>,
 
     return_type_stack: Vec<Type>,
     bound_assumptions: Vec<HashMap<TypeVarId, HashSet<String>>>,
+    effect_context_stack: Vec<EffectContext>,
+    effect_usage_stack: Vec<HashSet<Effect>>,
+    lambda_effects: HashMap<(u32, u32), HashSet<Effect>>,
+    suspend_effect_checks: usize,
     errors: Vec<TypeError>,
 }
 
@@ -134,15 +184,22 @@ impl TypeChecker {
             struct_info: HashMap::new(),
             variant_info: HashMap::new(),
             variants_by_parent: HashMap::new(),
+            refined_info: HashMap::new(),
+            auto_from_variants: HashMap::new(),
             concepts: HashMap::new(),
             inherent_methods: HashMap::new(),
             associated_functions: HashMap::new(),
             concept_instances: HashMap::new(),
+            fn_effects: HashMap::new(),
 
             struct_fields: HashMap::new(),
 
             return_type_stack: Vec::new(),
             bound_assumptions: Vec::new(),
+            effect_context_stack: Vec::new(),
+            effect_usage_stack: Vec::new(),
+            lambda_effects: HashMap::new(),
+            suspend_effect_checks: 0,
             errors: Vec::new(),
         };
 
@@ -158,6 +215,7 @@ impl TypeChecker {
         self.type_arity.insert("Map".into(), 2);
         self.type_arity.insert("Set".into(), 1);
         self.type_arity.insert("Range".into(), 1);
+        self.type_arity.insert("ConstraintError".into(), 0);
     }
 
     fn register_builtin_variants(&mut self) {
@@ -258,6 +316,9 @@ impl TypeChecker {
                 let scheme = self.function_scheme(f, annotations.get(&f.name));
                 self.def_types.insert(def_id, scheme.ty.clone());
                 self.def_schemes.insert(def_id, scheme);
+
+                let effect_scheme = self.function_effect_scheme(f, annotations.get(&f.name));
+                self.fn_effects.insert(def_id, effect_scheme);
             }
         }
 
@@ -363,9 +424,69 @@ impl TypeChecker {
                         },
                     );
                 }
+
+                // Auto-derive From payload -> parent for unique single-payload variants.
+                let mut payload_to_variant: HashMap<String, Option<String>> = HashMap::new();
+                for variant in variants {
+                    if variant.fields.len() != 1 {
+                        continue;
+                    }
+                    let mut local = HashMap::new();
+                    let payload = self.resolve_type_expr_with_vars(&variant.fields[0], &mut local);
+                    if let Some(payload_name) = self.type_name_key(&payload) {
+                        payload_to_variant
+                            .entry(payload_name)
+                            .and_modify(|slot| *slot = None)
+                            .or_insert_with(|| Some(variant.name.clone()));
+                    }
+                }
+                for (payload, variant_opt) in payload_to_variant {
+                    if let Some(variant_name) = variant_opt {
+                        self.auto_from_variants
+                            .insert((payload, td.name.clone()), variant_name);
+                    }
+                }
             }
             TypeDefKind::Refined { .. } => {
-                // Refined types are implemented in P2.
+                if let TypeDefKind::Refined {
+                    base_type,
+                    constraint,
+                } = &td.kind
+                {
+                    let mut base_tvars = HashMap::new();
+                    let base = self.resolve_type_expr_with_vars(base_type, &mut base_tvars);
+
+                    // Validate constraint grammar against the restricted P2 subset.
+                    self.validate_refined_constraint(constraint, td.span);
+
+                    let type_args = td
+                        .type_params
+                        .iter()
+                        .filter_map(|p| tvars.get(p).cloned())
+                        .collect::<Vec<_>>();
+
+                    self.refined_info.insert(
+                        td.name.clone(),
+                        RefinedTypeInfo {
+                            type_args: type_args.clone(),
+                            base_type: base.clone(),
+                            constraint: constraint.clone(),
+                        },
+                    );
+
+                    // Auto-generate associated constructor:
+                    // Name.new(base) -> Result Name ConstraintError
+                    let refined_ty = Type::Named(td.name.clone(), type_args.clone());
+                    let ret = Type::Named(
+                        "Result".into(),
+                        vec![refined_ty, Type::Named("ConstraintError".into(), vec![])],
+                    );
+                    let ctor_sig = TypeScheme::monomorphic(Type::Function(vec![base], Box::new(ret)));
+                    self.associated_functions
+                        .entry(td.name.clone())
+                        .or_default()
+                        .insert("new".into(), ctor_sig);
+                }
             }
         }
     }
@@ -994,6 +1115,451 @@ impl TypeChecker {
         }
     }
 
+    fn function_effect_scheme(&mut self, f: &FnDef, annotation: Option<&TypeExpr>) -> FunctionEffectScheme {
+        let declared = if !f.effects.is_empty() {
+            self.effect_spec_from_refs(&f.effects)
+        } else if let Some(TypeExpr::Function(_, _, effects, _)) = annotation {
+            effects
+                .as_ref()
+                .map(|e| self.effect_spec_from_refs(e))
+                .unwrap_or_default()
+        } else if let Some(TypeExpr::Forall(_, body, _)) = annotation {
+            if let TypeExpr::Function(_, _, effects, _) = body.as_ref() {
+                effects
+                    .as_ref()
+                    .map(|e| self.effect_spec_from_refs(e))
+                    .unwrap_or_default()
+            } else {
+                EffectSpec::default()
+            }
+        } else {
+            EffectSpec::default()
+        };
+
+        let ann_param_types: Vec<TypeExpr> = match annotation {
+            Some(TypeExpr::Function(params, _, _, _)) => params.clone(),
+            Some(TypeExpr::Forall(_, body, _)) => {
+                if let TypeExpr::Function(params, _, _, _) = body.as_ref() {
+                    params.clone()
+                } else {
+                    Vec::new()
+                }
+            }
+            _ => Vec::new(),
+        };
+
+        let mut param_effects = Vec::new();
+        for (i, p) in f.params.iter().enumerate() {
+            let src = p.ty.as_ref().or_else(|| ann_param_types.get(i));
+            let spec = match src {
+                Some(TypeExpr::Function(_, _, effects, _)) => effects
+                    .as_ref()
+                    .map(|e| self.effect_spec_from_refs(e)),
+                _ => None,
+            };
+            param_effects.push(spec);
+        }
+
+        FunctionEffectScheme {
+            declared,
+            param_effects,
+        }
+    }
+
+    fn effect_spec_from_refs(&mut self, refs: &[EffectRef]) -> EffectSpec {
+        let mut out = EffectSpec::default();
+        for ef in refs {
+            let term = self.effect_term_from_name(&ef.name, ef.span);
+            out.terms.push(term);
+        }
+        out
+    }
+
+    fn effect_term_from_name(&mut self, name: &str, span: Span) -> EffectTerm {
+        if name
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_lowercase())
+            .unwrap_or(false)
+        {
+            return EffectTerm::Var(name.to_string());
+        }
+
+        if let Some(effect) = Self::effect_from_name(name) {
+            EffectTerm::Concrete(effect)
+        } else {
+            self.errors.push(TypeError {
+                message: format!("unknown effect '{}'", name),
+                span,
+            });
+            EffectTerm::Var(name.to_string())
+        }
+    }
+
+    fn effect_from_name(name: &str) -> Option<Effect> {
+        match name {
+            "Db.Read" => Some(Effect::DbRead),
+            "Db.Write" => Some(Effect::DbWrite),
+            "Net" => Some(Effect::Net),
+            "Fs.Read" => Some(Effect::FsRead),
+            "Fs.Write" => Some(Effect::FsWrite),
+            "Log" => Some(Effect::Log),
+            "Time" => Some(Effect::Time),
+            "Random" => Some(Effect::Random),
+            "Env" => Some(Effect::Env),
+            _ => None,
+        }
+    }
+
+    fn effect_implied(effect: Effect) -> Option<Effect> {
+        match effect {
+            Effect::DbWrite => Some(Effect::DbRead),
+            Effect::FsWrite => Some(Effect::FsRead),
+            _ => None,
+        }
+    }
+
+    fn with_implied_effects(&self, effects: &HashSet<Effect>) -> HashSet<Effect> {
+        let mut out = effects.clone();
+        let mut changed = true;
+        while changed {
+            changed = false;
+            let current: Vec<Effect> = out.iter().copied().collect();
+            for e in current {
+                if let Some(implied) = Self::effect_implied(e) {
+                    if out.insert(implied) {
+                        changed = true;
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    fn effect_vars(spec: &EffectSpec) -> HashSet<String> {
+        let mut vars = HashSet::new();
+        for t in &spec.terms {
+            if let EffectTerm::Var(v) = t {
+                vars.insert(v.clone());
+            }
+        }
+        vars
+    }
+
+    fn effect_concretes(spec: &EffectSpec) -> HashSet<Effect> {
+        let mut out = HashSet::new();
+        for t in &spec.terms {
+            if let EffectTerm::Concrete(e) = t {
+                out.insert(*e);
+            }
+        }
+        out
+    }
+
+    fn instantiate_effect_spec(
+        &self,
+        spec: &EffectSpec,
+        bindings: &HashMap<String, HashSet<Effect>>,
+    ) -> HashSet<Effect> {
+        let mut out = HashSet::new();
+        for t in &spec.terms {
+            match t {
+                EffectTerm::Concrete(e) => {
+                    out.insert(*e);
+                }
+                EffectTerm::Var(v) => {
+                    if let Some(bound) = bindings.get(v) {
+                        out.extend(bound.iter().copied());
+                    }
+                }
+            }
+        }
+        self.with_implied_effects(&out)
+    }
+
+    fn effect_set_to_string(&self, effects: &HashSet<Effect>) -> String {
+        let mut names = effects
+            .iter()
+            .map(|e| match e {
+                Effect::DbRead => "Db.Read",
+                Effect::DbWrite => "Db.Write",
+                Effect::Net => "Net",
+                Effect::FsRead => "Fs.Read",
+                Effect::FsWrite => "Fs.Write",
+                Effect::Log => "Log",
+                Effect::Time => "Time",
+                Effect::Random => "Random",
+                Effect::Env => "Env",
+            })
+            .collect::<Vec<_>>();
+        names.sort();
+        format!("[{}]", names.join(", "))
+    }
+
+    fn record_effect_usage(&mut self, effects: &HashSet<Effect>) {
+        if let Some(top) = self.effect_usage_stack.last_mut() {
+            top.extend(effects.iter().copied());
+        }
+    }
+
+    fn callable_effects_from_expr(
+        &self,
+        expr: &Expr,
+        resolved: &ResolvedModule,
+    ) -> Option<HashSet<Effect>> {
+        match expr {
+            Expr::Lambda(_, _, _, span) => self.lambda_effects.get(&(span.start, span.end)).cloned(),
+            Expr::Ident(_, span) => {
+                let id = resolved.references.get(&(span.start, span.end))?;
+                let scheme = self.fn_effects.get(id)?;
+                Some(self.with_implied_effects(&Self::effect_concretes(&scheme.declared)))
+            }
+            _ => None,
+        }
+    }
+
+    fn infer_call_required_effects(
+        &mut self,
+        callee_id: DefId,
+        args: &[Expr],
+        resolved: &ResolvedModule,
+        span: Span,
+    ) -> HashSet<Effect> {
+        let Some(scheme) = self.fn_effects.get(&callee_id).cloned() else {
+            return HashSet::new();
+        };
+
+        let mut bindings: HashMap<String, HashSet<Effect>> = HashMap::new();
+        for (arg, param_spec_opt) in args.iter().zip(scheme.param_effects.iter()) {
+            let Some(param_spec) = param_spec_opt else {
+                continue;
+            };
+            let Some(arg_effects) = self.callable_effects_from_expr(arg, resolved) else {
+                continue;
+            };
+
+            let required = self.with_implied_effects(&Self::effect_concretes(param_spec));
+            if !required.is_subset(&arg_effects) {
+                self.errors.push(TypeError {
+                    message: format!(
+                        "call argument callback effects {} do not satisfy required {}",
+                        self.effect_set_to_string(&arg_effects),
+                        self.effect_set_to_string(&required)
+                    ),
+                    span: arg.span(),
+                });
+            }
+
+            let vars = Self::effect_vars(param_spec).into_iter().collect::<Vec<_>>();
+            let extra = arg_effects
+                .difference(&required)
+                .copied()
+                .collect::<HashSet<_>>();
+
+            if vars.is_empty() && !extra.is_empty() {
+                self.errors.push(TypeError {
+                    message: format!(
+                        "effectful callback {} is not allowed by parameter effect annotation",
+                        self.effect_set_to_string(&arg_effects)
+                    ),
+                    span: arg.span(),
+                });
+            }
+
+            for v in vars {
+                bindings.entry(v).or_default().extend(extra.iter().copied());
+            }
+        }
+
+        let required = self.instantiate_effect_spec(&scheme.declared, &bindings);
+        self.check_call_effects(&required, span);
+        required
+    }
+
+    fn check_call_effects(&mut self, required: &HashSet<Effect>, span: Span) {
+        self.record_effect_usage(required);
+
+        if self.suspend_effect_checks > 0 {
+            return;
+        }
+
+        let Some(ctx) = self.effect_context_stack.last() else {
+            return;
+        };
+        let available = self.with_implied_effects(&ctx.allowed);
+        let missing = required
+            .difference(&available)
+            .copied()
+            .collect::<HashSet<_>>();
+
+        if !missing.is_empty() && ctx.vars.is_empty() {
+            self.errors.push(TypeError {
+                message: format!(
+                    "missing capabilities: required {}, available {}",
+                    self.effect_set_to_string(required),
+                    self.effect_set_to_string(&available)
+                ),
+                span,
+            });
+        }
+    }
+
+    fn can_convert_error_type(&mut self, source: &Type, target: &Type) -> bool {
+        if self.apply(source) == self.apply(target) {
+            return true;
+        }
+
+        let Some(source_name) = self.type_name_key(source) else {
+            return false;
+        };
+        let Some(target_name) = self.type_name_key(target) else {
+            return false;
+        };
+
+        if self
+            .auto_from_variants
+            .contains_key(&(source_name.clone(), target_name.clone()))
+        {
+            return true;
+        }
+
+        if let Some(inst) = self
+            .concept_instances
+            .get(&("From".to_string(), target_name.clone()))
+        {
+            if let Some(scheme) = inst.methods.get("from").cloned() {
+                let (fn_ty, _) = self.instantiate_scheme_with_bounds(&scheme);
+                if let Type::Function(params, ret) = fn_ty {
+                    if params.len() == 1
+                        && self.apply(&params[0]) == self.apply(source)
+                        && self.apply(&ret) == self.apply(target)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    fn check_refined_constraint_on_literal(
+        &self,
+        refined: &str,
+        base_expr: &Expr,
+        info: &RefinedTypeInfo,
+    ) -> Option<bool> {
+        self.eval_refined_constraint(refined, base_expr, &info.constraint)
+    }
+
+    fn eval_refined_constraint(&self, refined: &str, value: &Expr, expr: &Expr) -> Option<bool> {
+        let _ = refined;
+        match expr {
+            Expr::Binary(lhs, BinOp::And, rhs, _) => {
+                Some(self.eval_refined_constraint(refined, value, lhs)? && self.eval_refined_constraint(refined, value, rhs)?)
+            }
+            Expr::Binary(lhs, BinOp::Or, rhs, _) => {
+                Some(self.eval_refined_constraint(refined, value, lhs)? || self.eval_refined_constraint(refined, value, rhs)?)
+            }
+            Expr::Unary(UnaryOp::Not, inner, _) => Some(!self.eval_refined_constraint(refined, value, inner)?),
+            Expr::Binary(lhs, op, rhs, _) => {
+                let lv = self.eval_constraint_numeric(value, lhs)?;
+                let rv = self.eval_constraint_numeric(value, rhs)?;
+                match op {
+                    BinOp::Eq => Some((lv - rv).abs() < f64::EPSILON),
+                    BinOp::NotEq => Some((lv - rv).abs() >= f64::EPSILON),
+                    BinOp::Lt => Some(lv < rv),
+                    BinOp::Gt => Some(lv > rv),
+                    BinOp::LtEq => Some(lv <= rv),
+                    BinOp::GtEq => Some(lv >= rv),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn eval_constraint_numeric(&self, self_value: &Expr, expr: &Expr) -> Option<f64> {
+        match expr {
+            Expr::Ident(name, _) if name == "self" => match self_value {
+                Expr::IntLit(n, _) => Some(*n as f64),
+                Expr::FloatLit(n, _) => Some(*n),
+                _ => None,
+            },
+            Expr::IntLit(n, _) => Some(*n as f64),
+            Expr::FloatLit(n, _) => Some(*n),
+            Expr::Binary(lhs, BinOp::Add, rhs, _) => {
+                Some(self.eval_constraint_numeric(self_value, lhs)? + self.eval_constraint_numeric(self_value, rhs)?)
+            }
+            Expr::Binary(lhs, BinOp::Sub, rhs, _) => {
+                Some(self.eval_constraint_numeric(self_value, lhs)? - self.eval_constraint_numeric(self_value, rhs)?)
+            }
+            Expr::Binary(lhs, BinOp::Mul, rhs, _) => {
+                Some(self.eval_constraint_numeric(self_value, lhs)? * self.eval_constraint_numeric(self_value, rhs)?)
+            }
+            Expr::Binary(lhs, BinOp::Div, rhs, _) => {
+                Some(self.eval_constraint_numeric(self_value, lhs)? / self.eval_constraint_numeric(self_value, rhs)?)
+            }
+            Expr::Binary(lhs, BinOp::Mod, rhs, _) => {
+                Some(self.eval_constraint_numeric(self_value, lhs)? % self.eval_constraint_numeric(self_value, rhs)?)
+            }
+            _ => None,
+        }
+    }
+
+    fn validate_refined_constraint(&mut self, expr: &Expr, span: Span) {
+        if !self.is_valid_refined_constraint_expr(expr) {
+            self.errors.push(TypeError {
+                message: "invalid refined constraint: only comparisons, boolean operators, arithmetic, self/field access, and limited built-in methods are allowed".into(),
+                span,
+            });
+        }
+    }
+
+    fn is_valid_refined_constraint_expr(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Ident(name, _) => {
+                name == "self"
+                    || name
+                        .chars()
+                        .next()
+                        .map(|c| c.is_ascii_uppercase())
+                        .unwrap_or(false)
+            }
+            Expr::IntLit(_, _)
+            | Expr::FloatLit(_, _)
+            | Expr::StringLit(_, _)
+            | Expr::BoolLit(_, _) => true,
+            Expr::Unary(UnaryOp::Not | UnaryOp::Neg, inner, _) => {
+                self.is_valid_refined_constraint_expr(inner)
+            }
+            Expr::Binary(lhs, op, rhs, _) => matches!(
+                op,
+                BinOp::Eq
+                    | BinOp::NotEq
+                    | BinOp::Lt
+                    | BinOp::Gt
+                    | BinOp::LtEq
+                    | BinOp::GtEq
+                    | BinOp::And
+                    | BinOp::Or
+                    | BinOp::Add
+                    | BinOp::Sub
+                    | BinOp::Mul
+                    | BinOp::Div
+                    | BinOp::Mod
+            ) && self.is_valid_refined_constraint_expr(lhs)
+                && self.is_valid_refined_constraint_expr(rhs),
+            Expr::FieldAccess(base, _, _) => self.is_valid_refined_constraint_expr(base),
+            Expr::MethodCall(base, name, args, _) => {
+                matches!(name.as_str(), "len" | "matches" | "contains")
+                    && self.is_valid_refined_constraint_expr(base)
+                    && args.iter().all(|a| self.is_valid_refined_constraint_expr(a))
+            }
+            _ => false,
+        }
+    }
+
     fn check_function(&mut self, f: &FnDef, resolved: &ResolvedModule) {
         let Some(func_id) = self.lookup_function_def_id(&f.name, resolved) else {
             return;
@@ -1011,6 +1577,23 @@ impl TypeChecker {
             });
             return;
         };
+
+        let effect_scheme = self
+            .fn_effects
+            .get(&func_id)
+            .cloned()
+            .unwrap_or(FunctionEffectScheme {
+                declared: EffectSpec::default(),
+                param_effects: vec![None; f.params.len()],
+            });
+        let allowed_effects = Self::effect_concretes(&effect_scheme.declared);
+        let effect_vars = Self::effect_vars(&effect_scheme.declared);
+        self.effect_context_stack.push(EffectContext {
+            allowed: allowed_effects.clone(),
+            vars: effect_vars.clone(),
+        });
+        self.effect_usage_stack.push(HashSet::new());
+
         let assumptions = self.bounds_to_assumptions(&inst_bounds);
         self.bound_assumptions.push(assumptions);
 
@@ -1029,12 +1612,50 @@ impl TypeChecker {
             }
         }
 
+        for req in &f.requires {
+            let req_ty = self.infer_expr(req, &mut env, resolved);
+            self.unify(&req_ty, &Type::Bool, req.span());
+        }
+
         self.return_type_stack.push((*ret_ty).clone());
         let actual_ret = self.infer_expr(&f.body, &mut env, resolved);
         self.return_type_stack.pop();
         self.bound_assumptions.pop();
 
         self.unify(&ret_ty, &actual_ret, f.body.span());
+
+        if !f.ensures.is_empty() {
+            let mut ensures_env = env.clone();
+            ensures_env.insert(
+                "result".into(),
+                TypeScheme::monomorphic(self.apply(&ret_ty)),
+            );
+            for ens in &f.ensures {
+                let ens_ty = self.infer_expr(ens, &mut ensures_env, resolved);
+                self.unify(&ens_ty, &Type::Bool, ens.span());
+            }
+        }
+
+        let used_effects = self.effect_usage_stack.pop().unwrap_or_default();
+        self.effect_context_stack.pop();
+        if effect_vars.is_empty() {
+            let allowed = self.with_implied_effects(&allowed_effects);
+            let missing = used_effects
+                .difference(&allowed)
+                .copied()
+                .collect::<HashSet<_>>();
+            if !missing.is_empty() {
+                self.errors.push(TypeError {
+                    message: format!(
+                        "function '{}' declares {} but uses {}",
+                        f.name,
+                        self.effect_set_to_string(&allowed),
+                        self.effect_set_to_string(&used_effects)
+                    ),
+                    span: f.span,
+                });
+            }
+        }
     }
 
     fn infer_expr(&mut self, expr: &Expr, env: &mut TypeEnv, resolved: &ResolvedModule) -> Type {
@@ -1246,6 +1867,17 @@ impl TypeChecker {
                             &Type::Function(arg_types, Box::new(ret_ty.clone())),
                             *span,
                         );
+
+                        if let Expr::Ident(_, cspan) = callee.as_ref() {
+                            if let Some(def_id) =
+                                resolved.references.get(&(cspan.start, cspan.end))
+                            {
+                                let mut full_args = Vec::with_capacity(args.len() + 1);
+                                full_args.push((**lhs).clone());
+                                full_args.extend(args.iter().cloned());
+                                self.infer_call_required_effects(*def_id, &full_args, resolved, *span);
+                            }
+                        }
                         self.apply(&ret_ty)
                     }
                     _ => {
@@ -1465,6 +2097,7 @@ impl TypeChecker {
                                 }
 
                                 self.check_instantiated_bounds(&bounds, *span);
+                                self.infer_call_required_effects(*def_id, args, resolved, *span);
                                 let result = self.apply(&ret);
                                 self.record_type(*span, result.clone());
                                 return result;
@@ -1604,6 +2237,26 @@ impl TypeChecker {
                                             for (arg, expected) in args.iter().zip(params.iter()) {
                                                 let arg_ty = self.infer_expr(arg, env, resolved);
                                                 self.unify(&arg_ty, expected, arg.span());
+                                            }
+
+                                            if method == "new" && args.len() == 1 {
+                                                if let Some(info) = self.refined_info.get(type_name) {
+                                                    if let Some(ok) = self.check_refined_constraint_on_literal(
+                                                        type_name,
+                                                        &args[0],
+                                                        info,
+                                                    ) {
+                                                        if !ok {
+                                                            self.errors.push(TypeError {
+                                                                message: format!(
+                                                                    "refined constructor '{}.new' failed constraint",
+                                                                    type_name
+                                                                ),
+                                                                span: args[0].span(),
+                                                            });
+                                                        }
+                                                    }
+                                                }
                                             }
                                             self.check_instantiated_bounds(&bounds, *span);
                                             let result = self.apply(&ret);
@@ -1845,11 +2498,28 @@ impl TypeChecker {
                                 Type::Error
                             }
                         } else {
-                            self.errors.push(TypeError {
-                                message: format!("type '{}' does not support field access", name),
-                                span: *span,
-                            });
-                            Type::Error
+                            if field_name == "value" {
+                                if let Some(base) =
+                                    self.instantiate_refined_base_for_args(&name, &args)
+                                {
+                                    base
+                                } else {
+                                    self.errors.push(TypeError {
+                                        message: format!(
+                                            "type '{}' does not support field access",
+                                            name
+                                        ),
+                                        span: *span,
+                                    });
+                                    Type::Error
+                                }
+                            } else {
+                                self.errors.push(TypeError {
+                                    message: format!("type '{}' does not support field access", name),
+                                    span: *span,
+                                });
+                                Type::Error
+                            }
                         }
                     }
                     other => {
@@ -1882,7 +2552,13 @@ impl TypeChecker {
                     })
                     .collect();
 
+                self.effect_usage_stack.push(HashSet::new());
+                self.suspend_effect_checks += 1;
                 let body_ty = self.infer_expr(body, &mut lambda_env, resolved);
+                self.suspend_effect_checks = self.suspend_effect_checks.saturating_sub(1);
+                let lambda_effects = self.effect_usage_stack.pop().unwrap_or_default();
+                self.lambda_effects
+                    .insert((span.start, span.end), lambda_effects);
                 let fn_ty = Type::Function(param_types, Box::new(body_ty));
                 self.record_type(*span, fn_ty.clone());
                 fn_ty
@@ -1919,12 +2595,66 @@ impl TypeChecker {
             }
             Expr::Try(inner, span) => {
                 let inner_ty = self.infer_expr(inner, env, resolved);
-                let value_ty = self.fresh_var();
-                let err_ty = self.fresh_var();
-                let expected = Type::Named("Result".into(), vec![value_ty.clone(), err_ty]);
-                self.unify(&inner_ty, &expected, *span);
+                let inner_ty = self.apply(&inner_ty);
+                let expected_ret = self
+                    .return_type_stack
+                    .last()
+                    .cloned()
+                    .unwrap_or(Type::Error);
 
-                let result = self.apply(&value_ty);
+                let result = match inner_ty {
+                    Type::Named(name, args) if name == "Result" && args.len() == 2 => {
+                        let ok_ty = args[0].clone();
+                        let src_err = args[1].clone();
+                        match self.apply(&expected_ret) {
+                            Type::Named(rname, rargs) if rname == "Result" && rargs.len() == 2 => {
+                                let dst_err = rargs[1].clone();
+                                if !self.can_convert_error_type(&src_err, &dst_err) {
+                                    self.errors.push(TypeError {
+                                        message: format!(
+                                            "cannot use '?': no conversion from '{}' to '{}'",
+                                            src_err, dst_err
+                                        ),
+                                        span: *span,
+                                    });
+                                }
+                            }
+                            other => {
+                                self.errors.push(TypeError {
+                                    message: format!(
+                                        "cannot use '?' on Result in function returning {}",
+                                        other
+                                    ),
+                                    span: *span,
+                                });
+                            }
+                        }
+                        ok_ty
+                    }
+                    Type::Named(name, args) if name == "Option" && args.len() == 1 => {
+                        match self.apply(&expected_ret) {
+                            Type::Named(rname, rargs) if rname == "Option" && rargs.len() == 1 => {}
+                            other => {
+                                self.errors.push(TypeError {
+                                    message: format!(
+                                        "cannot use '?' on Option in function returning {}",
+                                        other
+                                    ),
+                                    span: *span,
+                                });
+                            }
+                        }
+                        args[0].clone()
+                    }
+                    other => {
+                        self.errors.push(TypeError {
+                            message: format!("'?' expects Result or Option, got {}", other),
+                            span: *span,
+                        });
+                        Type::Error
+                    }
+                };
+
                 self.record_type(*span, result.clone());
                 result
             }
@@ -2525,7 +3255,7 @@ impl TypeChecker {
                     .collect();
                 Type::Product(ts)
             }
-            TypeExpr::Function(params, ret, _) => {
+            TypeExpr::Function(params, ret, _, _) => {
                 let param_types: Vec<Type> = params
                     .iter()
                     .map(|p| self.resolve_type_expr_with_vars(p, tvars))
@@ -2830,6 +3560,21 @@ impl TypeChecker {
                 .map(|(fname, fty)| (fname.clone(), self.substitute_type(fty, &map)))
                 .collect(),
         )
+    }
+
+    fn instantiate_refined_base_for_args(&self, name: &str, args: &[Type]) -> Option<Type> {
+        let info = self.refined_info.get(name)?;
+        if info.type_args.len() != args.len() {
+            return None;
+        }
+
+        let mut map: HashMap<TypeVarId, Type> = HashMap::new();
+        for (template, actual) in info.type_args.iter().zip(args.iter()) {
+            if let Type::Var(v) = template {
+                map.insert(*v, actual.clone());
+            }
+        }
+        Some(self.substitute_type(&info.base_type, &map))
     }
 
     fn collect_and_freshen_type_vars(&mut self, tys: &[Type], map: &mut HashMap<TypeVarId, Type>) {
@@ -3391,5 +4136,145 @@ mod tests {
              def test(a: Vec2, b: Vec2) -> Int = a.add(b)",
         );
         assert!(result.is_ok(), "{:?}", result.err());
+    }
+
+    #[test]
+    fn test_effect_missing_capability_error() {
+        let result = typecheck_str(
+            "fetch: Int -> Int [Net]\n\
+             def fetch(x) = x\n\
+             def pure(x: Int) -> Int = fetch(x)",
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_effect_declared_capability_ok() {
+        let result = typecheck_str(
+            "fetch: Int -> Int [Net]\n\
+             def fetch(x) = x\n\
+             def caller(x: Int) -> Int [Net] = fetch(x)",
+        );
+        assert!(result.is_ok(), "{:?}", result.err());
+    }
+
+    #[test]
+    fn test_effect_hierarchy_write_implies_read() {
+        let result = typecheck_str(
+            "read_db: Int -> Int [Db.Read]\n\
+             def read_db(x) = x\n\
+             def write_db(x: Int) -> Int [Db.Write] = read_db(x)",
+        );
+        assert!(result.is_ok(), "{:?}", result.err());
+    }
+
+    #[test]
+    fn test_effect_polymorphism_from_callback() {
+        let result = typecheck_str(
+            "map1: (Int -> Int [e]) * Int -> Int [e]\n\
+             def map1(f, x) = f(x)\n\
+             fetch: Int -> Int [Net]\n\
+             def fetch(x) = x\n\
+             def caller(x: Int) -> Int [Net] = map1(fetch, x)",
+        );
+        assert!(result.is_ok(), "{:?}", result.err());
+    }
+
+    #[test]
+    fn test_effect_polymorphism_missing_in_caller() {
+        let result = typecheck_str(
+            "map1: (Int -> Int [e]) * Int -> Int [e]\n\
+             def map1(f, x) = f(x)\n\
+             fetch: Int -> Int [Net]\n\
+             def fetch(x) = x\n\
+             def caller(x: Int) -> Int = map1(fetch, x)",
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_contracts_bool_typechecking() {
+        let result = typecheck_str(
+            "def f(x: Int) -> Int requires x > 0 ensures result > 0 = x",
+        );
+        assert!(result.is_ok(), "{:?}", result.err());
+    }
+
+    #[test]
+    fn test_contract_requires_must_be_bool() {
+        let result = typecheck_str("def f(x: Int) -> Int requires x + 1 = x");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_try_option_success() {
+        let result = typecheck_str(
+            "head: List Int -> Option Int\n\
+             def head(xs) = None\n\
+             def test(xs: List Int) -> Option Int = { let n = head(xs)?; Some(n) }",
+        );
+        assert!(result.is_ok(), "{:?}", result.err());
+    }
+
+    #[test]
+    fn test_try_option_wrong_return_type_error() {
+        let result = typecheck_str(
+            "head: List Int -> Option Int\n\
+             def head(xs) = None\n\
+             def test(xs: List Int) -> Int = { let n = head(xs)?; n }",
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_try_result_auto_from_conversion() {
+        let result = typecheck_str(
+            "type IoError = Failed\n\
+             type AppError = Io IoError | Other String\n\
+             load: Int -> Result Int IoError\n\
+             def load(x) = Err(Failed)\n\
+             def run(x: Int) -> Result Int AppError = { let v = load(x)?; Ok(v) }",
+        );
+        assert!(result.is_ok(), "{:?}", result.err());
+    }
+
+    #[test]
+    fn test_try_result_missing_conversion_error() {
+        let result = typecheck_str(
+            "type E1 = A\n\
+             type E2 = B\n\
+             get: Int -> Result Int E1\n\
+             def get(x) = Err(A)\n\
+             def run(x: Int) -> Result Int E2 = { let v = get(x)?; Ok(v) }",
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_refined_type_new_and_value() {
+        let result = typecheck_str(
+            "type NonZero = Int where self != 0\n\
+             def div(a: Int, b: NonZero) -> Int = a / b.value\n\
+             def mk() -> Result NonZero ConstraintError = NonZero.new(5)",
+        );
+        assert!(result.is_ok(), "{:?}", result.err());
+    }
+
+    #[test]
+    fn test_refined_literal_constraint_failure() {
+        let result = typecheck_str(
+            "type NonZero = Int where self != 0\n\
+             def mk() -> Result NonZero ConstraintError = NonZero.new(0)",
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_refined_invalid_constraint_expression_error() {
+        let result = typecheck_str(
+            "type Bad = Int where ((x) -> x)(self)\n\
+             def x() -> Int = 1",
+        );
+        assert!(result.is_err());
     }
 }

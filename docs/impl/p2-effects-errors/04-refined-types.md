@@ -12,6 +12,14 @@ Refined types are **runtime-checked newtypes** (smart constructors), not compile
 - **P1-05: Methods** — `.new()` and `.value` accessors
 - **P2-03: Error Handling** — `.new()` returns `Result T ConstraintError`
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented (front-end/typechecker):** Refined type parsing, refined-constraint grammar validation (restricted subset), `self` resolution in constraints, generated `Type.new(...)` typing as `Result Type ConstraintError`, and `.value` field typing.
+- **Implemented (static check subset):** Literal-argument validation for some refined constraints at compile time.
+- **Implemented (contracts front-end):** `requires`/`ensures` parsing, resolver support (`result` in ensures), and Bool-typechecking of contract clauses.
+- **Partial/Deferred:** Full runtime validation codegen for refined `.new()` and debug-only runtime contract enforcement are not complete yet.
+- **Partial:** Constraint evaluation/constant support is currently limited compared to the full aspirational grammar.
+
 ## Design Decisions
 
 ### Syntax

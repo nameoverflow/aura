@@ -9,6 +9,12 @@ Aura uses Haskell-style parametric polymorphism with implicit quantification. Fr
 - **P0-04: Basic Types** — type inference and unification
 - **P1-01: Algebraic Types** — generic type definitions
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented:** Implicit quantification of free type variables, explicit `forall` with concept bounds, HM-style instantiation/generalization, generic function annotations, generic ADT use, and arity checking for named type constructors.
+- **Partial:** Kind checking is currently practical arity checking, not a full first-class kind system.
+- **Implemented (policy):** Mutable bindings are treated monomorphically, providing the value-restriction behavior expected for this phase.
+
 ## Design Decisions
 
 ### Implicit Quantification

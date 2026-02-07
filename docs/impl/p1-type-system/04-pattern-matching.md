@@ -10,6 +10,13 @@ Pattern matching is a core language feature in Aura. It enables destructuring of
 - **P0-04: Basic Types** — type checking of patterns
 - **P0-03: Name Resolution** — resolving variant names in patterns
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented:** Wildcard/variable/literal/constructor/tuple/struct/rest/or-pattern parsing and typing, nested pattern binding, guard typing, and destructuring in `let`/`for`.
+- **Implemented (subset):** Exhaustiveness checks for common sum-type and `Bool` cases, including awareness of guarded arms and or-pattern constructor coverage.
+- **Partial:** Exhaustiveness uses pragmatic checks, not a full Maranget matrix algorithm yet.
+- **Deferred/Partial:** Redundancy (unreachable arm) diagnostics and full pattern-codegen support for all pattern forms are not complete.
+
 ## Design Decisions
 
 ### Pattern Kinds

@@ -12,6 +12,13 @@ A function with no effect list is pure. The compiler guarantees that pure functi
 - **P0-04: Basic Types** — effects extend the type system
 - **P0-03: Name Resolution** — resolving effect names
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented:** Effect-list parsing on function signatures and function types, built-in capability set, effect hierarchy (`Db.Write` => `Db.Read`, `Fs.Write` => `Fs.Read`), and call-site capability subset checks.
+- **Implemented:** Pure-function behavior (empty effect set) is enforced in type checking.
+- **Partial:** Effect checks run as part of the type checker rather than a separate dedicated effect pass.
+- **Partial/Deferred:** No dedicated `main()` transitive-capability summary check yet; enforcement currently occurs through normal call-site checking.
+
 ## Design Decisions
 
 ### Effect Representation

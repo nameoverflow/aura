@@ -1,0 +1,10 @@
+type E1 = A
+type E2 = B
+
+get: Int -> Result Int E1
+def get(x) = Err(A)
+
+def run(x: Int) -> Result Int E2 = {
+  let v = get(x)?
+  Ok(v)
+}

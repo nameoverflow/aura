@@ -1458,7 +1458,7 @@ impl<'ctx> CodeGen<'ctx> {
             ast::TypeExpr::Product(types, _) => {
                 Type::Product(types.iter().map(|t| self.type_expr_to_type(t)).collect())
             }
-            ast::TypeExpr::Function(params, ret, _) => {
+            ast::TypeExpr::Function(params, ret, _, _) => {
                 let pts: Vec<Type> = params.iter().map(|p| self.type_expr_to_type(p)).collect();
                 Type::Function(pts, Box::new(self.type_expr_to_type(ret)))
             }
