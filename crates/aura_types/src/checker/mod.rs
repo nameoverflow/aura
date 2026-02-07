@@ -172,6 +172,7 @@ pub struct TypeChecker {
     pub(crate) associated_functions: HashMap<String, HashMap<String, TypeScheme>>,
     pub(crate) concept_instances: HashMap<(String, String), ConceptInstanceInfo>,
     pub(crate) fn_effects: HashMap<DefId, FunctionEffectScheme>,
+    pub(crate) fn_is_async: HashMap<DefId, bool>,
     /// Transparent type aliases: name -> (type_params, resolved_type)
     pub(crate) type_aliases: HashMap<String, (Vec<String>, Type)>,
 
@@ -184,6 +185,8 @@ pub struct TypeChecker {
     pub(crate) effect_usage_stack: Vec<HashSet<Effect>>,
     pub(crate) lambda_effects: HashMap<(u32, u32), HashSet<Effect>>,
     pub(crate) suspend_effect_checks: usize,
+    pub(crate) async_context_stack: Vec<bool>,
+    pub(crate) allow_block_on_bridge_depth: usize,
     pub(crate) errors: Vec<TypeError>,
 }
 
@@ -207,6 +210,7 @@ impl TypeChecker {
             associated_functions: HashMap::new(),
             concept_instances: HashMap::new(),
             fn_effects: HashMap::new(),
+            fn_is_async: HashMap::new(),
             type_aliases: HashMap::new(),
 
             struct_fields: HashMap::new(),
@@ -217,11 +221,14 @@ impl TypeChecker {
             effect_usage_stack: Vec::new(),
             lambda_effects: HashMap::new(),
             suspend_effect_checks: 0,
+            async_context_stack: Vec::new(),
+            allow_block_on_bridge_depth: 0,
             errors: Vec::new(),
         };
 
         checker.register_builtin_type_arity();
         checker.register_builtin_variants();
+        checker.register_builtin_runtime_helpers();
         checker
     }
 
@@ -233,6 +240,9 @@ impl TypeChecker {
         self.type_arity.insert("Set".into(), 1);
         self.type_arity.insert("Range".into(), 1);
         self.type_arity.insert("ConstraintError".into(), 0);
+        self.type_arity.insert("Duration".into(), 0);
+        self.type_arity.insert("Timeout".into(), 0);
+        self.type_arity.insert("Runtime".into(), 0);
     }
 
     fn register_builtin_variants(&mut self) {
@@ -280,6 +290,23 @@ impl TypeChecker {
             .insert("Option".into(), vec!["Some".into(), "None".into()]);
         self.variants_by_parent
             .insert("Result".into(), vec!["Ok".into(), "Err".into()]);
+    }
+
+    fn register_builtin_runtime_helpers(&mut self) {
+        let t = self.fresh_var();
+        let quantified = match t {
+            Type::Var(id) => vec![id],
+            _ => Vec::new(),
+        };
+        let scheme = TypeScheme {
+            quantified,
+            bounds: Vec::new(),
+            ty: Type::Function(vec![t.clone()], Box::new(t)),
+        };
+        self.associated_functions
+            .entry("Runtime".into())
+            .or_default()
+            .insert("block_on".into(), scheme);
     }
 
     pub(crate) fn fresh_var(&mut self) -> Type {
@@ -340,6 +367,7 @@ impl TypeChecker {
                 let scheme = self.function_scheme(f, annotations.get(&f.name));
                 self.def_types.insert(def_id, scheme.ty.clone());
                 self.def_schemes.insert(def_id, scheme);
+                self.fn_is_async.insert(def_id, f.is_async);
 
                 let effect_scheme = self.function_effect_scheme(f, annotations.get(&f.name));
                 self.fn_effects.insert(def_id, effect_scheme);
@@ -373,7 +401,11 @@ impl TypeChecker {
         }
     }
 
-    pub(crate) fn lookup_function_def_id(&self, name: &str, resolved: &ResolvedModule) -> Option<DefId> {
+    pub(crate) fn lookup_function_def_id(
+        &self,
+        name: &str,
+        resolved: &ResolvedModule,
+    ) -> Option<DefId> {
         for (id, info) in &resolved.defs {
             if info.name == name && matches!(info.kind, DefKind::Function) {
                 return Some(*id);

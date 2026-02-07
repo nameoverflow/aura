@@ -208,6 +208,9 @@ impl Parser {
             }
             TokenKind::If => self.parse_if(),
             TokenKind::Match => self.parse_match(),
+            TokenKind::Parallel => self.parse_parallel(),
+            TokenKind::Race => self.parse_race(),
+            TokenKind::Timeout => self.parse_timeout(),
             TokenKind::For => self.parse_for(),
             TokenKind::While => self.parse_while(),
             TokenKind::Let => self.parse_let(),
@@ -443,6 +446,77 @@ impl Parser {
         })
     }
 
+    fn parse_parallel(&mut self) -> Result<Expr, ParseError> {
+        let start = self.current_span();
+        self.expect(&TokenKind::Parallel)?;
+        self.expect(&TokenKind::LBrace)?;
+
+        let body = if self.eat(&TokenKind::For) {
+            let pattern = self.parse_pattern()?;
+            self.expect(&TokenKind::In)?;
+            let iter = self.parse_expr_bp(0)?;
+            self.expect(&TokenKind::Yield)?;
+            let yield_body = self.parse_expr()?;
+            let fail_fast = Self::expr_contains_try(&yield_body);
+            ParallelBody::ForYield {
+                pattern,
+                iter: Box::new(iter),
+                body: Box::new(yield_body),
+                fail_fast,
+            }
+        } else {
+            let mut yields = Vec::new();
+            self.expect(&TokenKind::Yield)?;
+            yields.push(self.parse_expr()?);
+            while self.eat(&TokenKind::Comma) {
+                if self.check(&TokenKind::RBrace) {
+                    break;
+                }
+                self.expect(&TokenKind::Yield)?;
+                yields.push(self.parse_expr()?);
+            }
+            ParallelBody::FixedYield(yields)
+        };
+
+        let end = self.current_span();
+        self.expect(&TokenKind::RBrace)?;
+        Ok(Expr::Parallel(body, start.merge(end)))
+    }
+
+    fn parse_race(&mut self) -> Result<Expr, ParseError> {
+        let start = self.current_span();
+        self.expect(&TokenKind::Race)?;
+        self.expect(&TokenKind::LBrace)?;
+
+        let mut arms = Vec::new();
+        arms.push(self.parse_expr()?);
+        while self.eat(&TokenKind::Comma) {
+            if self.check(&TokenKind::RBrace) {
+                break;
+            }
+            arms.push(self.parse_expr()?);
+        }
+
+        let end = self.current_span();
+        self.expect(&TokenKind::RBrace)?;
+        Ok(Expr::Race(arms, start.merge(end)))
+    }
+
+    fn parse_timeout(&mut self) -> Result<Expr, ParseError> {
+        let start = self.current_span();
+        self.expect(&TokenKind::Timeout)?;
+        self.expect(&TokenKind::LParen)?;
+        let duration = self.parse_expr()?;
+        self.expect(&TokenKind::RParen)?;
+        let body = self.parse_block()?;
+        let end = body.span();
+        Ok(Expr::Timeout(
+            Box::new(duration),
+            Box::new(body),
+            start.merge(end),
+        ))
+    }
+
     fn parse_for(&mut self) -> Result<Expr, ParseError> {
         let start = self.current_span();
         self.expect(&TokenKind::For)?;
@@ -611,5 +685,91 @@ impl Parser {
         // Contracts are single expressions terminated by the next clause keyword or '='.
         // Start at precedence 2 so top-level assignment (`=`) is not consumed.
         self.parse_expr_bp(2)
+    }
+
+    fn expr_contains_try(expr: &Expr) -> bool {
+        match expr {
+            Expr::Try(_, _) => true,
+            Expr::Binary(lhs, _, rhs, _) => {
+                Self::expr_contains_try(lhs) || Self::expr_contains_try(rhs)
+            }
+            Expr::Unary(_, inner, _) | Expr::FieldAccess(inner, _, _) => {
+                Self::expr_contains_try(inner)
+            }
+            Expr::Pipeline(lhs, rhs, _) => {
+                Self::expr_contains_try(lhs) || Self::expr_contains_try(rhs)
+            }
+            Expr::Block(exprs, _) => exprs.iter().any(Self::expr_contains_try),
+            Expr::If(cond, then_branch, else_branch, _) => {
+                Self::expr_contains_try(cond)
+                    || Self::expr_contains_try(then_branch)
+                    || else_branch
+                        .as_ref()
+                        .map(|e| Self::expr_contains_try(e))
+                        .unwrap_or(false)
+            }
+            Expr::Match(scrutinee, arms, _) => {
+                Self::expr_contains_try(scrutinee)
+                    || arms.iter().any(|arm| {
+                        arm.guard
+                            .as_ref()
+                            .map(Self::expr_contains_try)
+                            .unwrap_or(false)
+                            || Self::expr_contains_try(&arm.body)
+                    })
+            }
+            Expr::Parallel(body, _) => match body {
+                ParallelBody::ForYield { iter, body, .. } => {
+                    Self::expr_contains_try(iter) || Self::expr_contains_try(body)
+                }
+                ParallelBody::FixedYield(values) => values.iter().any(Self::expr_contains_try),
+            },
+            Expr::Race(arms, _) => arms.iter().any(Self::expr_contains_try),
+            Expr::Timeout(duration, body, _) => {
+                Self::expr_contains_try(duration) || Self::expr_contains_try(body)
+            }
+            Expr::For(_, iter, body, _)
+            | Expr::ForPattern(_, iter, body, _)
+            | Expr::Range(iter, body, _, _) => {
+                Self::expr_contains_try(iter) || Self::expr_contains_try(body)
+            }
+            Expr::While(cond, body, _) => {
+                Self::expr_contains_try(cond) || Self::expr_contains_try(body)
+            }
+            Expr::Let(_, _, _, value, _)
+            | Expr::LetPattern(_, _, _, value, _)
+            | Expr::Return(Some(value), _) => Self::expr_contains_try(value),
+            Expr::Assign(lhs, rhs, _) => {
+                Self::expr_contains_try(lhs) || Self::expr_contains_try(rhs)
+            }
+            Expr::Call(callee, args, _) | Expr::MethodCall(callee, _, args, _) => {
+                Self::expr_contains_try(callee) || args.iter().any(Self::expr_contains_try)
+            }
+            Expr::Lambda(_, _, body, _) => Self::expr_contains_try(body),
+            Expr::StructLit(_, fields, _) => {
+                fields.iter().any(|(_, expr)| Self::expr_contains_try(expr))
+            }
+            Expr::With(base, fields, _) => {
+                Self::expr_contains_try(base)
+                    || fields.iter().any(|(_, expr)| Self::expr_contains_try(expr))
+            }
+            Expr::ListLit(elems, _) | Expr::TupleLit(elems, _) => {
+                elems.iter().any(Self::expr_contains_try)
+            }
+            Expr::StringInterp(parts, _) => parts.iter().any(|part| match &part.kind {
+                StringPartKind::Literal(_) => false,
+                StringPartKind::Expr(e) => Self::expr_contains_try(e),
+            }),
+            Expr::Return(None, _)
+            | Expr::Break(_)
+            | Expr::Continue(_)
+            | Expr::IntLit(_, _)
+            | Expr::FloatLit(_, _)
+            | Expr::StringLit(_, _)
+            | Expr::BoolLit(_, _)
+            | Expr::Ident(_, _)
+            | Expr::QualifiedIdent(_, _, _)
+            | Expr::Unit(_) => false,
+        }
     }
 }

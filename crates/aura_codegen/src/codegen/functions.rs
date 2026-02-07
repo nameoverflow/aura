@@ -7,7 +7,10 @@ use aura_types::types::Type;
 use super::CodeGen;
 
 impl<'ctx> CodeGen<'ctx> {
-    pub(crate) fn declare_function(&mut self, f: &ast::FnDef) -> Result<FunctionValue<'ctx>, String> {
+    pub(crate) fn declare_function(
+        &mut self,
+        f: &ast::FnDef,
+    ) -> Result<FunctionValue<'ctx>, String> {
         let param_types: Vec<BasicMetadataTypeEnum<'ctx>> = f
             .params
             .iter()

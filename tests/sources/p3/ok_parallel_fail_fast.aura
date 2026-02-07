@@ -1,0 +1,4 @@
+fetch: Int -> Result Int String
+def fetch(x) = Ok(x)
+
+def gather(xs: List Int) -> Result (List Int) String = parallel { for x in xs yield fetch(x)? }

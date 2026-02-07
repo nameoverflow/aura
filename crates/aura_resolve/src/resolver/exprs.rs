@@ -66,6 +66,34 @@ impl Resolver {
                     self.scope.pop();
                 }
             }
+            Expr::Parallel(body, _) => match body {
+                ParallelBody::ForYield {
+                    pattern,
+                    iter,
+                    body,
+                    ..
+                } => {
+                    self.resolve_expr(iter);
+                    self.scope.push();
+                    self.resolve_pattern(pattern);
+                    self.resolve_expr(body);
+                    self.scope.pop();
+                }
+                ParallelBody::FixedYield(values) => {
+                    for value in values {
+                        self.resolve_expr(value);
+                    }
+                }
+            },
+            Expr::Race(arms, _) => {
+                for arm in arms {
+                    self.resolve_expr(arm);
+                }
+            }
+            Expr::Timeout(duration, body, _) => {
+                self.resolve_expr(duration);
+                self.resolve_expr(body);
+            }
             Expr::For(var, iter, body, span) => {
                 self.resolve_expr(iter);
                 self.scope.push();

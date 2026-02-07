@@ -1,6 +1,6 @@
 use super::*;
-use aura_lexer::Lexer;
 use crate::ast::*;
+use aura_lexer::Lexer;
 
 fn parse_expr_str(input: &str) -> Expr {
     // Wrap in a function for the parser
@@ -104,8 +104,7 @@ fn test_parse_let_mut() {
 
 #[test]
 fn test_parse_type_def_sum() {
-    let module =
-        parse_module_str("type Status = Pending | Processing | Complete | Failed String");
+    let module = parse_module_str("type Status = Pending | Processing | Complete | Failed String");
     match &module.items[0] {
         Item::TypeDef(td) => {
             assert_eq!(td.name, "Status");
@@ -169,7 +168,9 @@ fn test_parse_match() {
 
 #[test]
 fn test_parse_or_pattern() {
-    let module = parse_module_str("def test(x: Option Int) -> Int = match x { None | Some(0) => 0, Some(n) => n }");
+    let module = parse_module_str(
+        "def test(x: Option Int) -> Int = match x { None | Some(0) => 0, Some(n) => n }",
+    );
     match &module.items[0] {
         Item::Function(f) => match &f.body {
             Expr::Match(_, arms, _) => {
@@ -184,9 +185,8 @@ fn test_parse_or_pattern() {
 
 #[test]
 fn test_parse_struct_pattern_with_rest() {
-    let module = parse_module_str(
-        "def test(u: User) -> String = match u { User { name, .. } => name }",
-    );
+    let module =
+        parse_module_str("def test(u: User) -> String = match u { User { name, .. } => name }");
     match &module.items[0] {
         Item::Function(f) => match &f.body {
             Expr::Match(_, arms, _) => match &arms[0].pattern {
@@ -220,7 +220,10 @@ fn test_parse_for_destructuring_loop() {
     let module = parse_module_str("def test() -> Int = for (a, b) in pairs { a }");
     match &module.items[0] {
         Item::Function(f) => {
-            assert!(matches!(&f.body, Expr::ForPattern(Pattern::Tuple(_, _), _, _, _)));
+            assert!(matches!(
+                &f.body,
+                Expr::ForPattern(Pattern::Tuple(_, _), _, _, _)
+            ));
         }
         _ => panic!("expected function"),
     }
@@ -345,7 +348,10 @@ fn test_parse_let_pattern_binding() {
     match &module.items[0] {
         Item::Function(f) => match &f.body {
             Expr::Block(exprs, _) => {
-                assert!(matches!(&exprs[0], Expr::LetPattern(Pattern::Tuple(_, _), false, None, _, _)));
+                assert!(matches!(
+                    &exprs[0],
+                    Expr::LetPattern(Pattern::Tuple(_, _), false, None, _, _)
+                ));
             }
             _ => panic!("expected block"),
         },
@@ -392,9 +398,8 @@ fn test_parse_function_type_effects() {
 
 #[test]
 fn test_parse_fn_effects_and_contracts() {
-    let module = parse_module_str(
-        "def f(x: Int) -> Int [Net, Log] requires x > 0 ensures result > 0 = x",
-    );
+    let module =
+        parse_module_str("def f(x: Int) -> Int [Net, Log] requires x > 0 ensures result > 0 = x");
     match &module.items[0] {
         Item::Function(f) => {
             assert_eq!(f.effects.len(), 2);
@@ -435,7 +440,9 @@ fn test_parse_instance_def() {
     );
     match &module.items[0] {
         Item::InstanceDef(inst) => {
-            assert!(matches!(&inst.kind, InstanceKind::Concept { concept, .. } if concept == "Display"));
+            assert!(
+                matches!(&inst.kind, InstanceKind::Concept { concept, .. } if concept == "Display")
+            );
             assert_eq!(inst.assoc_types.len(), 1);
             assert_eq!(inst.methods.len(), 1);
         }
@@ -450,6 +457,84 @@ fn test_parse_pipeline_method_sugar() {
         Item::Function(f) => {
             assert!(matches!(&f.body, Expr::MethodCall(_, name, _, _) if name == "to_string"));
         }
+        _ => panic!("expected function"),
+    }
+}
+
+#[test]
+fn test_parse_async_function_def() {
+    let module = parse_module_str("async def fetch(x: Int) -> Int = x");
+    match &module.items[0] {
+        Item::Function(f) => {
+            assert!(f.is_async);
+            assert_eq!(f.name, "fetch");
+        }
+        _ => panic!("expected function"),
+    }
+}
+
+#[test]
+fn test_parse_parallel_for_yield() {
+    let module = parse_module_str(
+        "def test(xs: List Int) -> List Int = parallel { for x in xs yield x + 1 }",
+    );
+    match &module.items[0] {
+        Item::Function(f) => match &f.body {
+            Expr::Parallel(
+                ParallelBody::ForYield {
+                    pattern,
+                    iter,
+                    body,
+                    ..
+                },
+                _,
+            ) => {
+                assert!(matches!(pattern, Pattern::Ident(name, _) if name == "x"));
+                assert!(matches!(iter.as_ref(), Expr::Ident(name, _) if name == "xs"));
+                assert!(matches!(body.as_ref(), Expr::Binary(_, BinOp::Add, _, _)));
+            }
+            _ => panic!("expected parallel for-yield"),
+        },
+        _ => panic!("expected function"),
+    }
+}
+
+#[test]
+fn test_parse_parallel_fixed_yield() {
+    let module = parse_module_str("def test() -> Int * Int = parallel { yield 1, yield 2 }");
+    match &module.items[0] {
+        Item::Function(f) => match &f.body {
+            Expr::Parallel(ParallelBody::FixedYield(values), _) => {
+                assert_eq!(values.len(), 2);
+            }
+            _ => panic!("expected parallel fixed-yield"),
+        },
+        _ => panic!("expected function"),
+    }
+}
+
+#[test]
+fn test_parse_race() {
+    let module = parse_module_str("def test() -> Int = race { 1, 2 }");
+    match &module.items[0] {
+        Item::Function(f) => match &f.body {
+            Expr::Race(arms, _) => assert_eq!(arms.len(), 2),
+            _ => panic!("expected race"),
+        },
+        _ => panic!("expected function"),
+    }
+}
+
+#[test]
+fn test_parse_timeout() {
+    let module = parse_module_str("def test() -> Int = timeout(5) { 1 }");
+    match &module.items[0] {
+        Item::Function(f) => match &f.body {
+            Expr::Timeout(_, body, _) => {
+                assert!(matches!(body.as_ref(), Expr::Block(_, _)));
+            }
+            _ => panic!("expected timeout"),
+        },
         _ => panic!("expected function"),
     }
 }

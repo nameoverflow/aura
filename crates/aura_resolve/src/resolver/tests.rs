@@ -164,8 +164,25 @@ fn test_resolve_refined_type_self_constraint() {
 
 #[test]
 fn test_resolve_function_contracts() {
-    let result = resolve_str(
-        "def f(x: Int) -> Int requires x > 0 ensures result > 0 = x",
-    );
+    let result = resolve_str("def f(x: Int) -> Int requires x > 0 ensures result > 0 = x");
     assert!(result.is_ok());
+}
+
+#[test]
+fn test_resolve_parallel_race_timeout() {
+    let result = resolve_str(
+        "def f(xs: List Int) -> List Int = parallel { for x in xs yield x + 1 }\n\
+         def g() -> Int = race { 1, 2 }\n\
+         def h() -> Result Int Timeout = timeout(5) { 1 }",
+    );
+    assert!(result.is_ok(), "{:?}", result.err());
+}
+
+#[test]
+fn test_resolve_runtime_block_on() {
+    let result = resolve_str(
+        "async def fetch(x: Int) -> Int = x\n\
+         def main() -> Int = Runtime.block_on(fetch(1))",
+    );
+    assert!(result.is_ok(), "{:?}", result.err());
 }

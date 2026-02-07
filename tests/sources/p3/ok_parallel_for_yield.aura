@@ -1,0 +1,1 @@
+def inc_all(xs: List Int) -> List Int = parallel { for x in xs yield x + 1 }

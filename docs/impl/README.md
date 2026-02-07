@@ -24,14 +24,14 @@ P0 is the absolute foundation (including basic LLVM codegen). P1 builds the full
 
 ## Current Status (as of February 7, 2026)
 
-**204 tests** (35 codegen + 25 lexer + 31 parser + 24 resolve + 66 types + 2 P1 fixtures + 2 P2 fixtures + 19 E2E), all passing, zero warnings.
+**216 tests** (35 codegen + 25 lexer + 36 parser + 26 resolve + 66 types + 2 P1 fixtures + 2 P2 fixtures + 2 P3 fixtures + 3 runtime + 19 E2E), all passing, zero warnings.
 
 | Tier | Status | Notes |
 |------|--------|-------|
 | **P0** | **Complete** | Lexer, parser, name resolution, type inference, LLVM codegen, CLI — all working. Supports functions, arithmetic, comparisons, if/else, while/for, break/continue, match (int/bool/string/constructor patterns + guards), structs, sum types, pipeline `\|>`, print/println. 19 E2E tests compile and run native binaries. |
 | **P1** | **Front-end complete** | Parser/resolver/typechecker support ADTs, generics (implicit quantification + `forall` bounds), concepts (definitions, instances, superclass checks, operator desugaring, associated types), methods (inherent + concept + disambiguation), pattern matching (exhaustiveness + redundancy checking), type aliases (transparent), default method body type-checking. Codegen for P1 features (method dispatch, monomorphization, or-patterns, struct patterns) is deferred to P3/P4. |
 | **P2** | **Front-end complete** | Effect system (9 built-in capabilities, hierarchy, pure-function enforcement), effect polymorphism (effect variables, callback propagation), `?` operator (Result + Option, auto-From derivation), refined types (constraint grammar validation, `.new()` / `.value` typing, compile-time literal constraint checking), contracts (`requires`/`ensures` Bool typing, `result` variable). Runtime/codegen enforcement deferred to P3/P4. |
-| **P3** | **Not Started** | Planned only. |
+| **P3** | **In Progress** | Async boundary checks (`async` vs sync + `Runtime.block_on`), `parallel`/`race`/`timeout` parsing + type checking, new runtime crate (`aura_rt`) with mark-sweep GC + shadow stack API, and new `aura` CLI (`build`/`run`/`check`). Full codegen/runtime integration remains. |
 | **P4** | **Not Started** | Planned only. |
 
 ## Milestones

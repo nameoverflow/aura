@@ -1,0 +1,1 @@
+def with_timeout(d: Duration) -> Result Int Timeout = timeout(d) { 1 }

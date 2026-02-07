@@ -149,7 +149,9 @@ impl TypeChecker {
         resolved: &ResolvedModule,
     ) -> Option<HashSet<Effect>> {
         match expr {
-            Expr::Lambda(_, _, _, span) => self.lambda_effects.get(&(span.start, span.end)).cloned(),
+            Expr::Lambda(_, _, _, span) => {
+                self.lambda_effects.get(&(span.start, span.end)).cloned()
+            }
             Expr::Ident(_, span) => {
                 let id = resolved.references.get(&(span.start, span.end))?;
                 let scheme = self.fn_effects.get(id)?;
@@ -191,7 +193,9 @@ impl TypeChecker {
                 });
             }
 
-            let vars = Self::effect_vars(param_spec).into_iter().collect::<Vec<_>>();
+            let vars = Self::effect_vars(param_spec)
+                .into_iter()
+                .collect::<Vec<_>>();
             let extra = arg_effects
                 .difference(&required)
                 .copied()

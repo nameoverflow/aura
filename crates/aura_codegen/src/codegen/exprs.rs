@@ -159,16 +159,20 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 Ok(None)
             }
-            ast::Expr::ListLit(_, _)
-            | ast::Expr::TupleLit(_, _)
-            | ast::Expr::Lambda(_, _, _, _)
-            | ast::Expr::With(_, _, _)
-            | ast::Expr::Try(_, _)
-            | ast::Expr::Range(_, _, _, _)
-            | ast::Expr::MethodCall(_, _, _, _)
-            | ast::Expr::QualifiedIdent(_, _, _) => {
-                // These features are deferred to later tiers
-                Ok(None)
+            ast::Expr::ListLit(_, _) => Err("list literal codegen is not supported yet".into()),
+            ast::Expr::TupleLit(_, _) => Err("tuple literal codegen is not supported yet".into()),
+            ast::Expr::Lambda(_, _, _, _) => Err("closure codegen is not supported yet".into()),
+            ast::Expr::Parallel(_, _) => Err("parallel codegen is not supported yet".into()),
+            ast::Expr::Race(_, _) => Err("race codegen is not supported yet".into()),
+            ast::Expr::Timeout(_, _, _) => Err("timeout codegen is not supported yet".into()),
+            ast::Expr::With(_, _, _) => Err("with-expression codegen is not supported yet".into()),
+            ast::Expr::Try(_, _) => Err("try-operator codegen is not supported yet".into()),
+            ast::Expr::Range(_, _, _, _) => Err("range codegen is not supported yet".into()),
+            ast::Expr::MethodCall(_, _, _, _) => {
+                Err("method call codegen is not supported yet".into())
+            }
+            ast::Expr::QualifiedIdent(_, _, _) => {
+                Err("qualified variant codegen is not supported yet".into())
             }
         }
     }
@@ -178,7 +182,9 @@ impl<'ctx> CodeGen<'ctx> {
         lhs: &ast::Expr,
         rhs: &ast::Expr,
     ) -> Result<Option<BasicValueEnum<'ctx>>, String> {
-        let lhs_val = self.compile_expr(lhs)?.ok_or("pipeline LHS produced no value")?;
+        let lhs_val = self
+            .compile_expr(lhs)?
+            .ok_or("pipeline LHS produced no value")?;
         match rhs {
             ast::Expr::Call(callee, args, _) => {
                 // a |> f(x, y) => f(a, x, y)

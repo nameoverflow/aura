@@ -1,0 +1,1 @@
+def both() -> Int * Bool = parallel { yield 1, yield true }

@@ -8,7 +8,12 @@ use crate::types::Type;
 use super::{TypeChecker, TypeEnv, TypeError, TypeScheme};
 
 impl TypeChecker {
-    pub(crate) fn infer_expr(&mut self, expr: &Expr, env: &mut TypeEnv, resolved: &ResolvedModule) -> Type {
+    pub(crate) fn infer_expr(
+        &mut self,
+        expr: &Expr,
+        env: &mut TypeEnv,
+        resolved: &ResolvedModule,
+    ) -> Type {
         let ty = match expr {
             Expr::IntLit(_, span) => {
                 self.record_type(*span, Type::Int);
@@ -125,9 +130,7 @@ impl TypeChecker {
                 self.record_type(*span, result_ty.clone());
                 result_ty
             }
-            Expr::Pipeline(lhs, rhs, span) => {
-                self.infer_pipeline(lhs, rhs, *span, env, resolved)
-            }
+            Expr::Pipeline(lhs, rhs, span) => self.infer_pipeline(lhs, rhs, *span, env, resolved),
             Expr::Block(exprs, span) => {
                 let mut block_env = env.clone();
                 let mut result = Type::Unit;
@@ -179,6 +182,11 @@ impl TypeChecker {
                 let result = self.apply(&result_ty);
                 self.record_type(*span, result.clone());
                 result
+            }
+            Expr::Parallel(body, span) => self.infer_parallel(body, *span, env, resolved),
+            Expr::Race(arms, span) => self.infer_race(arms, *span, env, resolved),
+            Expr::Timeout(duration, body, span) => {
+                self.infer_timeout(duration, body, *span, env, resolved)
             }
             Expr::For(var, iter, body, span) => {
                 let iter_ty = self.infer_expr(iter, env, resolved);
@@ -298,9 +306,7 @@ impl TypeChecker {
                 self.record_type(*span, Type::Unit);
                 Type::Unit
             }
-            Expr::Call(callee, args, span) => {
-                self.infer_call(callee, args, *span, env, resolved)
-            }
+            Expr::Call(callee, args, span) => self.infer_call(callee, args, *span, env, resolved),
             Expr::MethodCall(receiver, method, args, span) => {
                 self.infer_method_call(receiver, method, args, *span, env, resolved)
             }
@@ -363,9 +369,7 @@ impl TypeChecker {
                 self.record_type(*span, product.clone());
                 product
             }
-            Expr::Try(inner, span) => {
-                self.infer_try(inner, *span, env, resolved)
-            }
+            Expr::Try(inner, span) => self.infer_try(inner, *span, env, resolved),
             Expr::Range(start, end, _, span) => {
                 let start_ty = self.infer_expr(start, env, resolved);
                 let end_ty = self.infer_expr(end, env, resolved);
@@ -422,12 +426,7 @@ impl TypeChecker {
                     unified
                 }
             }
-            BinOp::Eq
-            | BinOp::NotEq
-            | BinOp::Lt
-            | BinOp::Gt
-            | BinOp::LtEq
-            | BinOp::GtEq => {
+            BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
                 self.unify(&lhs_ty, &rhs_ty, span);
                 let unified = self.apply(&lhs_ty);
                 if matches!(op, BinOp::Eq | BinOp::NotEq) {
@@ -435,10 +434,7 @@ impl TypeChecker {
                         && !self.type_implements_concept(&unified, "Eq")
                     {
                         self.errors.push(TypeError {
-                            message: format!(
-                                "comparison operator requires 'Eq', got {}",
-                                unified
-                            ),
+                            message: format!("comparison operator requires 'Eq', got {}", unified),
                             span,
                         });
                     }
@@ -446,10 +442,7 @@ impl TypeChecker {
                     && !self.type_implements_concept(&unified, "Ord")
                 {
                     self.errors.push(TypeError {
-                        message: format!(
-                            "ordering operator requires 'Ord', got {}",
-                            unified
-                        ),
+                        message: format!("ordering operator requires 'Ord', got {}", unified),
                         span,
                     });
                 }
@@ -478,6 +471,11 @@ impl TypeChecker {
 
         let result = match rhs {
             Expr::Call(callee, args, _) => {
+                if let Expr::Ident(_, cspan) = callee.as_ref() {
+                    if let Some(def_id) = resolved.references.get(&(cspan.start, cspan.end)) {
+                        self.check_async_call_boundary(*def_id, span);
+                    }
+                }
                 let callee_ty = self.infer_expr(callee, env, resolved);
                 let mut arg_types = Vec::with_capacity(args.len() + 1);
                 arg_types.push(lhs_ty);
@@ -492,9 +490,7 @@ impl TypeChecker {
                 );
 
                 if let Expr::Ident(_, cspan) = callee.as_ref() {
-                    if let Some(def_id) =
-                        resolved.references.get(&(cspan.start, cspan.end))
-                    {
+                    if let Some(def_id) = resolved.references.get(&(cspan.start, cspan.end)) {
                         let mut full_args = Vec::with_capacity(args.len() + 1);
                         full_args.push((*lhs).clone());
                         full_args.extend(args.iter().cloned());
@@ -505,6 +501,11 @@ impl TypeChecker {
             }
             _ => {
                 let rhs_ty = self.infer_expr(rhs, env, resolved);
+                if let Expr::Ident(_, rspan) = rhs {
+                    if let Some(def_id) = resolved.references.get(&(rspan.start, rspan.end)) {
+                        self.check_async_call_boundary(*def_id, span);
+                    }
+                }
                 let ret_ty = self.fresh_var();
                 self.unify(
                     &rhs_ty,
@@ -529,9 +530,8 @@ impl TypeChecker {
     ) -> Type {
         if let Expr::Ident(name, _) = callee {
             if let Some(vinfo) = self.variant_info.get(name).cloned() {
-                let result = self.check_variant_constructor_call(
-                    name, &vinfo, args, env, resolved, span,
-                );
+                let result =
+                    self.check_variant_constructor_call(name, &vinfo, args, env, resolved, span);
                 self.record_type(span, result.clone());
                 return result;
             }
@@ -539,6 +539,7 @@ impl TypeChecker {
 
         if let Expr::Ident(_, cspan) = callee {
             if let Some(def_id) = resolved.references.get(&(cspan.start, cspan.end)) {
+                self.check_async_call_boundary(*def_id, span);
                 if let Some(scheme) = self.def_schemes.get(def_id).cloned() {
                     let (fn_ty, bounds) = self.instantiate_scheme_with_bounds(&scheme);
                     if let Type::Function(params, ret) = fn_ty {
@@ -595,12 +596,46 @@ impl TypeChecker {
         env: &mut TypeEnv,
         resolved: &ResolvedModule,
     ) -> Type {
+        if let Expr::Ident(receiver_name, _) = receiver {
+            if receiver_name == "Runtime" && method == "block_on" {
+                if args.len() != 1 {
+                    self.errors.push(TypeError {
+                        message: format!("Runtime.block_on expects 1 argument, got {}", args.len()),
+                        span,
+                    });
+                    self.record_type(span, Type::Error);
+                    return Type::Error;
+                }
+
+                if self.is_async_context() {
+                    self.errors.push(TypeError {
+                        message: "Runtime.block_on can only be called from a sync function".into(),
+                        span,
+                    });
+                }
+
+                self.allow_block_on_bridge_depth += 1;
+                let result = self.infer_expr(&args[0], env, resolved);
+                self.allow_block_on_bridge_depth =
+                    self.allow_block_on_bridge_depth.saturating_sub(1);
+                self.record_type(span, result.clone());
+                return result;
+            }
+        }
+
         // Explicit concept disambiguation: Concept.method(value, ...)
         if let Expr::Ident(concept_name, recv_span) = receiver {
             if let Some(id) = resolved.references.get(&(recv_span.start, recv_span.end)) {
                 if let Some(info) = resolved.defs.get(id) {
                     if matches!(info.kind, DefKind::Concept) {
-                        return self.infer_concept_dispatch_call(concept_name, method, args, span, env, resolved);
+                        return self.infer_concept_dispatch_call(
+                            concept_name,
+                            method,
+                            args,
+                            span,
+                            env,
+                            resolved,
+                        );
                     }
                 }
             }
@@ -611,7 +646,9 @@ impl TypeChecker {
             if let Some(id) = resolved.references.get(&(recv_span.start, recv_span.end)) {
                 if let Some(info) = resolved.defs.get(id) {
                     if matches!(info.kind, DefKind::Type) {
-                        return self.infer_associated_function_call(type_name, method, args, span, env, resolved);
+                        return self.infer_associated_function_call(
+                            type_name, method, args, span, env, resolved,
+                        );
                     }
                 }
             }
@@ -621,12 +658,16 @@ impl TypeChecker {
         let recv_ty = self.apply(&recv_ty);
         if let Some(recv_name) = self.type_name_key(&recv_ty) {
             // Try inherent methods first
-            if let Some(result) = self.try_infer_inherent_method_call(&recv_ty, &recv_name, method, args, span, env, resolved) {
+            if let Some(result) = self.try_infer_inherent_method_call(
+                &recv_ty, &recv_name, method, args, span, env, resolved,
+            ) {
                 return result;
             }
 
             // Try concept methods
-            if let Some(result) = self.try_infer_concept_method_call(&recv_ty, &recv_name, method, args, span, env, resolved) {
+            if let Some(result) = self.try_infer_concept_method_call(
+                &recv_ty, &recv_name, method, args, span, env, resolved,
+            ) {
                 return result;
             }
 
@@ -751,8 +792,7 @@ impl TypeChecker {
     ) -> Type {
         if let Some(methods) = self.associated_functions.get(type_name) {
             if let Some(scheme) = methods.get(method).cloned() {
-                let (fn_ty, bounds) =
-                    self.instantiate_scheme_with_bounds(&scheme);
+                let (fn_ty, bounds) = self.instantiate_scheme_with_bounds(&scheme);
                 if let Type::Function(params, ret) = fn_ty {
                     if params.len() != args.len() {
                         self.errors.push(TypeError {
@@ -773,11 +813,9 @@ impl TypeChecker {
 
                     if method == "new" && args.len() == 1 {
                         if let Some(info) = self.refined_info.get(type_name) {
-                            if let Some(ok) = self.check_refined_constraint_on_literal(
-                                type_name,
-                                &args[0],
-                                info,
-                            ) {
+                            if let Some(ok) =
+                                self.check_refined_constraint_on_literal(type_name, &args[0], info)
+                            {
                                 if !ok {
                                     self.errors.push(TypeError {
                                         message: format!(
@@ -798,10 +836,7 @@ impl TypeChecker {
             }
         }
         self.errors.push(TypeError {
-            message: format!(
-                "unknown associated function '{}.{}'",
-                type_name, method
-            ),
+            message: format!("unknown associated function '{}.{}'", type_name, method),
             span,
         });
         self.record_type(span, Type::Error);
@@ -1032,34 +1067,23 @@ impl TypeChecker {
 
         let ty = match recv_ty {
             Type::Named(name, args) => {
-                if let Some(fields) = self.instantiate_struct_fields_for_args(&name, &args)
-                {
-                    if let Some((_, ft)) =
-                        fields.iter().find(|(fname, _)| fname == field_name)
-                    {
+                if let Some(fields) = self.instantiate_struct_fields_for_args(&name, &args) {
+                    if let Some((_, ft)) = fields.iter().find(|(fname, _)| fname == field_name) {
                         ft.clone()
                     } else {
                         self.errors.push(TypeError {
-                            message: format!(
-                                "type '{}' has no field '{}'",
-                                name, field_name
-                            ),
+                            message: format!("type '{}' has no field '{}'", name, field_name),
                             span,
                         });
                         Type::Error
                     }
                 } else {
                     if field_name == "value" {
-                        if let Some(base) =
-                            self.instantiate_refined_base_for_args(&name, &args)
-                        {
+                        if let Some(base) = self.instantiate_refined_base_for_args(&name, &args) {
                             base
                         } else {
                             self.errors.push(TypeError {
-                                message: format!(
-                                    "type '{}' does not support field access",
-                                    name
-                                ),
+                                message: format!("type '{}' does not support field access", name),
                                 span,
                             });
                             Type::Error
@@ -1075,10 +1099,7 @@ impl TypeChecker {
             }
             other => {
                 self.errors.push(TypeError {
-                    message: format!(
-                        "cannot access field '{}' on type {}",
-                        field_name, other
-                    ),
+                    message: format!("cannot access field '{}' on type {}", field_name, other),
                     span,
                 });
                 Type::Error
@@ -1159,5 +1180,138 @@ impl TypeChecker {
 
         self.record_type(span, result.clone());
         result
+    }
+
+    fn infer_parallel(
+        &mut self,
+        body: &ParallelBody,
+        span: aura_common::Span,
+        env: &mut TypeEnv,
+        resolved: &ResolvedModule,
+    ) -> Type {
+        let result = match body {
+            ParallelBody::ForYield {
+                pattern,
+                iter,
+                body,
+                fail_fast,
+            } => {
+                let iter_ty = self.infer_expr(iter, env, resolved);
+                let elem_ty = self.element_type_from_iterable(&iter_ty, iter.span());
+                let mut body_env = env.clone();
+                self.bind_pattern(pattern, &elem_ty, &mut body_env, span);
+                let body_ty = self.infer_expr(body, &mut body_env, resolved);
+                let resolved_body = self.apply(&body_ty);
+                if *fail_fast {
+                    let err_ty = match self.return_type_stack.last().map(|t| self.apply(t)) {
+                        Some(Type::Named(name, args)) if name == "Result" && args.len() == 2 => {
+                            args[1].clone()
+                        }
+                        _ => self.fresh_var(),
+                    };
+                    Type::Named(
+                        "Result".into(),
+                        vec![Type::Named("List".into(), vec![resolved_body]), err_ty],
+                    )
+                } else {
+                    Type::Named("List".into(), vec![resolved_body])
+                }
+            }
+            ParallelBody::FixedYield(values) => {
+                let tys = values
+                    .iter()
+                    .map(|value| self.infer_expr(value, env, resolved))
+                    .collect::<Vec<_>>();
+                Type::Product(tys)
+            }
+        };
+        self.record_type(span, result.clone());
+        result
+    }
+
+    fn infer_race(
+        &mut self,
+        arms: &[Expr],
+        span: aura_common::Span,
+        env: &mut TypeEnv,
+        resolved: &ResolvedModule,
+    ) -> Type {
+        if arms.is_empty() {
+            self.errors.push(TypeError {
+                message: "race requires at least one arm".into(),
+                span,
+            });
+            self.record_type(span, Type::Error);
+            return Type::Error;
+        }
+
+        let first_ty = self.infer_expr(&arms[0], env, resolved);
+        for arm in arms.iter().skip(1) {
+            let arm_ty = self.infer_expr(arm, env, resolved);
+            self.unify(&first_ty, &arm_ty, arm.span());
+        }
+        let result = self.apply(&first_ty);
+        self.record_type(span, result.clone());
+        result
+    }
+
+    fn infer_timeout(
+        &mut self,
+        duration: &Expr,
+        body: &Expr,
+        span: aura_common::Span,
+        env: &mut TypeEnv,
+        resolved: &ResolvedModule,
+    ) -> Type {
+        let duration_ty = self.infer_expr(duration, env, resolved);
+        self.unify(
+            &duration_ty,
+            &Type::Named("Duration".into(), Vec::new()),
+            duration.span(),
+        );
+        let body_ty = self.infer_expr(body, env, resolved);
+        let result = Type::Named(
+            "Result".into(),
+            vec![
+                self.apply(&body_ty),
+                Type::Named("Timeout".into(), Vec::new()),
+            ],
+        );
+        self.record_type(span, result.clone());
+        result
+    }
+
+    fn element_type_from_iterable(&mut self, iterable_ty: &Type, span: aura_common::Span) -> Type {
+        match self.apply(iterable_ty) {
+            Type::Named(name, args) if name == "List" && args.len() == 1 => args[0].clone(),
+            Type::Named(name, args) if name == "Range" && args.len() == 1 => args[0].clone(),
+            other => {
+                self.errors.push(TypeError {
+                    message: format!("expected iterable type (List a or Range a), got {}", other),
+                    span,
+                });
+                Type::Error
+            }
+        }
+    }
+
+    fn is_async_context(&self) -> bool {
+        self.async_context_stack.last().copied().unwrap_or(false)
+    }
+
+    fn check_async_call_boundary(&mut self, def_id: aura_resolve::DefId, span: aura_common::Span) {
+        if !self.fn_is_async.get(&def_id).copied().unwrap_or(false) {
+            return;
+        }
+        if self.is_async_context() || self.allow_block_on_bridge_depth > 0 {
+            return;
+        }
+
+        self.errors.push(TypeError {
+            message:
+                "cannot call async function from sync context; wrap with Runtime.block_on(...)"
+                    .into(),
+            span,
+        });
     }
 }

@@ -54,16 +54,25 @@ impl TypeChecker {
         self.eval_refined_constraint(refined, base_expr, &info.constraint)
     }
 
-    pub(crate) fn eval_refined_constraint(&self, refined: &str, value: &Expr, expr: &Expr) -> Option<bool> {
+    pub(crate) fn eval_refined_constraint(
+        &self,
+        refined: &str,
+        value: &Expr,
+        expr: &Expr,
+    ) -> Option<bool> {
         let _ = refined;
         match expr {
-            Expr::Binary(lhs, BinOp::And, rhs, _) => {
-                Some(self.eval_refined_constraint(refined, value, lhs)? && self.eval_refined_constraint(refined, value, rhs)?)
+            Expr::Binary(lhs, BinOp::And, rhs, _) => Some(
+                self.eval_refined_constraint(refined, value, lhs)?
+                    && self.eval_refined_constraint(refined, value, rhs)?,
+            ),
+            Expr::Binary(lhs, BinOp::Or, rhs, _) => Some(
+                self.eval_refined_constraint(refined, value, lhs)?
+                    || self.eval_refined_constraint(refined, value, rhs)?,
+            ),
+            Expr::Unary(UnaryOp::Not, inner, _) => {
+                Some(!self.eval_refined_constraint(refined, value, inner)?)
             }
-            Expr::Binary(lhs, BinOp::Or, rhs, _) => {
-                Some(self.eval_refined_constraint(refined, value, lhs)? || self.eval_refined_constraint(refined, value, rhs)?)
-            }
-            Expr::Unary(UnaryOp::Not, inner, _) => Some(!self.eval_refined_constraint(refined, value, inner)?),
             Expr::Binary(lhs, op, rhs, _) => {
                 let lv = self.eval_constraint_numeric(value, lhs)?;
                 let rv = self.eval_constraint_numeric(value, rhs)?;
@@ -90,21 +99,26 @@ impl TypeChecker {
             },
             Expr::IntLit(n, _) => Some(*n as f64),
             Expr::FloatLit(n, _) => Some(*n),
-            Expr::Binary(lhs, BinOp::Add, rhs, _) => {
-                Some(self.eval_constraint_numeric(self_value, lhs)? + self.eval_constraint_numeric(self_value, rhs)?)
-            }
-            Expr::Binary(lhs, BinOp::Sub, rhs, _) => {
-                Some(self.eval_constraint_numeric(self_value, lhs)? - self.eval_constraint_numeric(self_value, rhs)?)
-            }
-            Expr::Binary(lhs, BinOp::Mul, rhs, _) => {
-                Some(self.eval_constraint_numeric(self_value, lhs)? * self.eval_constraint_numeric(self_value, rhs)?)
-            }
-            Expr::Binary(lhs, BinOp::Div, rhs, _) => {
-                Some(self.eval_constraint_numeric(self_value, lhs)? / self.eval_constraint_numeric(self_value, rhs)?)
-            }
-            Expr::Binary(lhs, BinOp::Mod, rhs, _) => {
-                Some(self.eval_constraint_numeric(self_value, lhs)? % self.eval_constraint_numeric(self_value, rhs)?)
-            }
+            Expr::Binary(lhs, BinOp::Add, rhs, _) => Some(
+                self.eval_constraint_numeric(self_value, lhs)?
+                    + self.eval_constraint_numeric(self_value, rhs)?,
+            ),
+            Expr::Binary(lhs, BinOp::Sub, rhs, _) => Some(
+                self.eval_constraint_numeric(self_value, lhs)?
+                    - self.eval_constraint_numeric(self_value, rhs)?,
+            ),
+            Expr::Binary(lhs, BinOp::Mul, rhs, _) => Some(
+                self.eval_constraint_numeric(self_value, lhs)?
+                    * self.eval_constraint_numeric(self_value, rhs)?,
+            ),
+            Expr::Binary(lhs, BinOp::Div, rhs, _) => Some(
+                self.eval_constraint_numeric(self_value, lhs)?
+                    / self.eval_constraint_numeric(self_value, rhs)?,
+            ),
+            Expr::Binary(lhs, BinOp::Mod, rhs, _) => Some(
+                self.eval_constraint_numeric(self_value, lhs)?
+                    % self.eval_constraint_numeric(self_value, rhs)?,
+            ),
             _ => None,
         }
     }
@@ -135,28 +149,32 @@ impl TypeChecker {
             Expr::Unary(UnaryOp::Not | UnaryOp::Neg, inner, _) => {
                 self.is_valid_refined_constraint_expr(inner)
             }
-            Expr::Binary(lhs, op, rhs, _) => matches!(
-                op,
-                BinOp::Eq
-                    | BinOp::NotEq
-                    | BinOp::Lt
-                    | BinOp::Gt
-                    | BinOp::LtEq
-                    | BinOp::GtEq
-                    | BinOp::And
-                    | BinOp::Or
-                    | BinOp::Add
-                    | BinOp::Sub
-                    | BinOp::Mul
-                    | BinOp::Div
-                    | BinOp::Mod
-            ) && self.is_valid_refined_constraint_expr(lhs)
-                && self.is_valid_refined_constraint_expr(rhs),
+            Expr::Binary(lhs, op, rhs, _) => {
+                matches!(
+                    op,
+                    BinOp::Eq
+                        | BinOp::NotEq
+                        | BinOp::Lt
+                        | BinOp::Gt
+                        | BinOp::LtEq
+                        | BinOp::GtEq
+                        | BinOp::And
+                        | BinOp::Or
+                        | BinOp::Add
+                        | BinOp::Sub
+                        | BinOp::Mul
+                        | BinOp::Div
+                        | BinOp::Mod
+                ) && self.is_valid_refined_constraint_expr(lhs)
+                    && self.is_valid_refined_constraint_expr(rhs)
+            }
             Expr::FieldAccess(base, _, _) => self.is_valid_refined_constraint_expr(base),
             Expr::MethodCall(base, name, args, _) => {
                 matches!(name.as_str(), "len" | "matches" | "contains")
                     && self.is_valid_refined_constraint_expr(base)
-                    && args.iter().all(|a| self.is_valid_refined_constraint_expr(a))
+                    && args
+                        .iter()
+                        .all(|a| self.is_valid_refined_constraint_expr(a))
             }
             _ => false,
         }

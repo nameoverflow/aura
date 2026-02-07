@@ -6,6 +6,8 @@ members = [
     "crates/aura_resolve",
     "crates/aura_types",
     "crates/aura_codegen",
+    "crates/aura_rt",
+    "crates/aura",
     "crates/aurac",
 ]
 resolver = "2"
@@ -22,6 +24,7 @@ aura_parser = { path = "crates/aura_parser" }
 aura_resolve = { path = "crates/aura_resolve" }
 aura_types = { path = "crates/aura_types" }
 aura_codegen = { path = "crates/aura_codegen" }
+aura_rt = { path = "crates/aura_rt" }
 thiserror = "2"
 string-interner = "0.17"
 inkwell = { version = "0.5", features = ["llvm14-0"] }

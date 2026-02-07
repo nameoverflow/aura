@@ -1,0 +1,2 @@
+async def fetch(x: Int) -> Int = x
+async def main() -> Int = fetch(1)

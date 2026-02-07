@@ -1,0 +1,2 @@
+async def fetch(x: Int) -> Int = x
+def main() -> Int = Runtime.block_on(fetch(1))

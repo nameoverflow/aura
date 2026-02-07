@@ -7,8 +7,8 @@ use aura_resolve::{DefKind, ResolvedModule};
 use crate::types::Type;
 
 use super::{
-    ConceptBound, ConceptInfo, EffectContext, EffectSpec, FunctionEffectScheme,
-    TypeChecker, TypeEnv, TypeError, TypeScheme,
+    ConceptBound, ConceptInfo, EffectContext, EffectSpec, FunctionEffectScheme, TypeChecker,
+    TypeEnv, TypeError, TypeScheme,
 };
 
 impl TypeChecker {
@@ -167,7 +167,11 @@ impl TypeChecker {
         None
     }
 
-    pub(crate) fn function_scheme(&mut self, f: &FnDef, annotation: Option<&TypeExpr>) -> TypeScheme {
+    pub(crate) fn function_scheme(
+        &mut self,
+        f: &FnDef,
+        annotation: Option<&TypeExpr>,
+    ) -> TypeScheme {
         let mut tvars = HashMap::new();
         let mut ann_bounds = Vec::new();
 
@@ -190,7 +194,9 @@ impl TypeChecker {
         if let Some(ann) = annotation {
             let ann_ty = if let TypeExpr::Forall(bounds, body, _) = ann {
                 for b in bounds {
-                    tvars.entry(b.ty_var.clone()).or_insert_with(|| self.fresh_var());
+                    tvars
+                        .entry(b.ty_var.clone())
+                        .or_insert_with(|| self.fresh_var());
                 }
                 for b in bounds {
                     if let Some(Type::Var(v)) = tvars.get(&b.ty_var) {
@@ -253,7 +259,11 @@ impl TypeChecker {
         }
     }
 
-    pub(crate) fn function_effect_scheme(&mut self, f: &FnDef, annotation: Option<&TypeExpr>) -> FunctionEffectScheme {
+    pub(crate) fn function_effect_scheme(
+        &mut self,
+        f: &FnDef,
+        annotation: Option<&TypeExpr>,
+    ) -> FunctionEffectScheme {
         let declared = if !f.effects.is_empty() {
             self.effect_spec_from_refs(&f.effects)
         } else if let Some(TypeExpr::Function(_, _, effects, _)) = annotation {
@@ -290,9 +300,9 @@ impl TypeChecker {
         for (i, p) in f.params.iter().enumerate() {
             let src = p.ty.as_ref().or_else(|| ann_param_types.get(i));
             let spec = match src {
-                Some(TypeExpr::Function(_, _, effects, _)) => effects
-                    .as_ref()
-                    .map(|e| self.effect_spec_from_refs(e)),
+                Some(TypeExpr::Function(_, _, effects, _)) => {
+                    effects.as_ref().map(|e| self.effect_spec_from_refs(e))
+                }
                 _ => None,
             };
             param_effects.push(spec);
@@ -322,14 +332,14 @@ impl TypeChecker {
             return;
         };
 
-        let effect_scheme = self
-            .fn_effects
-            .get(&func_id)
-            .cloned()
-            .unwrap_or(FunctionEffectScheme {
-                declared: EffectSpec::default(),
-                param_effects: vec![None; f.params.len()],
-            });
+        let effect_scheme =
+            self.fn_effects
+                .get(&func_id)
+                .cloned()
+                .unwrap_or(FunctionEffectScheme {
+                    declared: EffectSpec::default(),
+                    param_effects: vec![None; f.params.len()],
+                });
         let allowed_effects = Self::effect_concretes(&effect_scheme.declared);
         let effect_vars = Self::effect_vars(&effect_scheme.declared);
         self.effect_context_stack.push(EffectContext {
@@ -337,6 +347,7 @@ impl TypeChecker {
             vars: effect_vars.clone(),
         });
         self.effect_usage_stack.push(HashSet::new());
+        self.async_context_stack.push(f.is_async);
 
         let assumptions = self.bounds_to_assumptions(&inst_bounds);
         self.bound_assumptions.push(assumptions);
@@ -382,6 +393,7 @@ impl TypeChecker {
 
         let used_effects = self.effect_usage_stack.pop().unwrap_or_default();
         self.effect_context_stack.pop();
+        self.async_context_stack.pop();
         if effect_vars.is_empty() {
             let allowed = self.with_implied_effects(&allowed_effects);
             let missing = used_effects

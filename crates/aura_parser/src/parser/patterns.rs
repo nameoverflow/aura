@@ -23,7 +23,12 @@ impl Parser {
             .first()
             .map(pattern_span)
             .unwrap_or_else(|| self.current_span())
-            .merge(patterns.last().map(pattern_span).unwrap_or_else(|| self.current_span()));
+            .merge(
+                patterns
+                    .last()
+                    .map(pattern_span)
+                    .unwrap_or_else(|| self.current_span()),
+            );
         Ok(Pattern::Or(patterns, span))
     }
 

@@ -174,6 +174,7 @@ impl Parser {
             match self.peek() {
                 TokenKind::Eof => break,
                 TokenKind::Def
+                | TokenKind::Async
                 | TokenKind::Type
                 | TokenKind::Pub
                 | TokenKind::Use

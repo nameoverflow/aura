@@ -220,6 +220,9 @@ pub enum Expr {
     Block(Vec<Expr>, Span),
     If(Box<Expr>, Box<Expr>, Option<Box<Expr>>, Span),
     Match(Box<Expr>, Vec<MatchArm>, Span),
+    Parallel(ParallelBody, Span),
+    Race(Vec<Expr>, Span),
+    Timeout(Box<Expr>, Box<Expr>, Span), // duration, body
     For(String, Box<Expr>, Box<Expr>, Span),
     ForPattern(Pattern, Box<Expr>, Box<Expr>, Span),
     While(Box<Expr>, Box<Expr>, Span),
@@ -262,6 +265,9 @@ impl Expr {
             Expr::Block(_, s) => *s,
             Expr::If(_, _, _, s) => *s,
             Expr::Match(_, _, s) => *s,
+            Expr::Parallel(_, s) => *s,
+            Expr::Race(_, s) => *s,
+            Expr::Timeout(_, _, s) => *s,
             Expr::For(_, _, _, s) => *s,
             Expr::ForPattern(_, _, _, s) => *s,
             Expr::While(_, _, s) => *s,
@@ -284,6 +290,19 @@ impl Expr {
             Expr::Unit(s) => *s,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum ParallelBody {
+    // parallel { for x in xs yield expr }
+    ForYield {
+        pattern: Pattern,
+        iter: Box<Expr>,
+        body: Box<Expr>,
+        fail_fast: bool,
+    },
+    // parallel { yield expr1, yield expr2, ... }
+    FixedYield(Vec<Expr>),
 }
 
 #[derive(Debug, Clone)]

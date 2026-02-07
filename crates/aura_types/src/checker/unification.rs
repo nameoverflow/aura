@@ -79,8 +79,7 @@ impl TypeChecker {
             .iter()
             .map(|b| InstantiatedBound {
                 concept: b.concept.clone(),
-                ty: self
-                    .substitute_type(&Type::Var(b.type_var), &subst),
+                ty: self.substitute_type(&Type::Var(b.type_var), &subst),
             })
             .collect();
         (ty, bounds)
@@ -238,13 +237,21 @@ impl TypeChecker {
         }
     }
 
-    pub(crate) fn collect_and_freshen_type_vars(&mut self, tys: &[Type], map: &mut HashMap<TypeVarId, Type>) {
+    pub(crate) fn collect_and_freshen_type_vars(
+        &mut self,
+        tys: &[Type],
+        map: &mut HashMap<TypeVarId, Type>,
+    ) {
         for ty in tys {
             self.collect_and_freshen_type_var(ty, map);
         }
     }
 
-    pub(crate) fn collect_and_freshen_type_var(&mut self, ty: &Type, map: &mut HashMap<TypeVarId, Type>) {
+    pub(crate) fn collect_and_freshen_type_var(
+        &mut self,
+        ty: &Type,
+        map: &mut HashMap<TypeVarId, Type>,
+    ) {
         match ty {
             Type::Var(id) => {
                 map.entry(*id).or_insert_with(|| self.fresh_var());

@@ -1,0 +1,1 @@
+def first() -> Int = race { 1, true }

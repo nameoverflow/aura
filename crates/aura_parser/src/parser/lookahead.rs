@@ -43,10 +43,24 @@ impl Parser {
         if let TokenKind::UpperIdent(name) = self.peek() {
             let known = matches!(
                 name.as_str(),
-                "Int" | "Int8" | "Int16" | "Int32" | "Int64"
-                    | "UInt" | "UInt8" | "UInt16" | "UInt32" | "UInt64"
-                    | "Float32" | "Float64" | "Decimal" | "BigDecimal"
-                    | "Bool" | "Char" | "String" | "Unit"
+                "Int"
+                    | "Int8"
+                    | "Int16"
+                    | "Int32"
+                    | "Int64"
+                    | "UInt"
+                    | "UInt8"
+                    | "UInt16"
+                    | "UInt32"
+                    | "UInt64"
+                    | "Float32"
+                    | "Float64"
+                    | "Decimal"
+                    | "BigDecimal"
+                    | "Bool"
+                    | "Char"
+                    | "String"
+                    | "Unit"
             );
             if known {
                 return true;
@@ -194,6 +208,9 @@ impl Parser {
                 | TokenKind::LBracket
                 | TokenKind::If
                 | TokenKind::Match
+                | TokenKind::Parallel
+                | TokenKind::Race
+                | TokenKind::Timeout
                 | TokenKind::For
                 | TokenKind::While
                 | TokenKind::Let

@@ -5,9 +5,7 @@ use aura_resolve::ResolvedModule;
 
 use crate::types::Type;
 
-use super::{
-    ConceptInfo, ConceptInstanceInfo, TypeChecker, TypeEnv, TypeError, TypeScheme,
-};
+use super::{ConceptInfo, ConceptInstanceInfo, TypeChecker, TypeEnv, TypeError, TypeScheme};
 
 impl TypeChecker {
     pub(crate) fn collect_type_def(&mut self, td: &TypeDef) {
@@ -133,7 +131,8 @@ impl TypeChecker {
                         "Result".into(),
                         vec![refined_ty, Type::Named("ConstraintError".into(), vec![])],
                     );
-                    let ctor_sig = TypeScheme::monomorphic(Type::Function(vec![base], Box::new(ret)));
+                    let ctor_sig =
+                        TypeScheme::monomorphic(Type::Function(vec![base], Box::new(ret)));
                     self.associated_functions
                         .entry(td.name.clone())
                         .or_default()
@@ -187,8 +186,13 @@ impl TypeChecker {
         let mut methods = HashMap::new();
         let mut methods_with_default = HashSet::new();
         for method in &cd.methods {
-            let scheme =
-                self.concept_method_scheme(method, &self_ty, &assoc_placeholders, self_var, &assoc_var_ids);
+            let scheme = self.concept_method_scheme(
+                method,
+                &self_ty,
+                &assoc_placeholders,
+                self_var,
+                &assoc_var_ids,
+            );
             if methods.insert(method.name.clone(), scheme).is_some() {
                 self.errors.push(TypeError {
                     message: format!(
@@ -270,7 +274,11 @@ impl TypeChecker {
 
     /// Type-check default method bodies in a concept definition.
     /// The body is checked with `self` bound to the abstract Self type variable.
-    pub(crate) fn check_concept_default_bodies(&mut self, cd: &ConceptDef, resolved: &ResolvedModule) {
+    pub(crate) fn check_concept_default_bodies(
+        &mut self,
+        cd: &ConceptDef,
+        resolved: &ResolvedModule,
+    ) {
         let concept_info = match self.concepts.get(&cd.name) {
             Some(info) => info.clone(),
             None => return,
@@ -288,10 +296,7 @@ impl TypeChecker {
 
             for param in &method.params {
                 if param.name == "self" {
-                    env.insert(
-                        "self".into(),
-                        TypeScheme::monomorphic(self_ty.clone()),
-                    );
+                    env.insert("self".into(), TypeScheme::monomorphic(self_ty.clone()));
                 } else {
                     let ty = match &param.ty {
                         Some(te) => {
@@ -353,12 +358,16 @@ impl TypeChecker {
         let (target_ty, target_name, concept_name_opt) = match &inst.kind {
             InstanceKind::Inherent(target) => {
                 let target_ty = self.resolve_type_expr_with_vars(target, &mut tvars);
-                let target_name = self.type_name_key(&target_ty).unwrap_or_else(|| "<unknown>".into());
+                let target_name = self
+                    .type_name_key(&target_ty)
+                    .unwrap_or_else(|| "<unknown>".into());
                 (target_ty, target_name, None)
             }
             InstanceKind::Concept { concept, for_type } => {
                 let target_ty = self.resolve_type_expr_with_vars(for_type, &mut tvars);
-                let target_name = self.type_name_key(&target_ty).unwrap_or_else(|| "<unknown>".into());
+                let target_name = self
+                    .type_name_key(&target_ty)
+                    .unwrap_or_else(|| "<unknown>".into());
                 (target_ty, target_name, Some(concept.clone()))
             }
         };
@@ -388,7 +397,10 @@ impl TypeChecker {
                     let mut subst = HashMap::new();
                     subst.insert(concept_info.self_var, target_ty.clone());
                     for (name, id) in &concept_info.assoc_var_ids {
-                        let replacement = assoc_map.get(name).cloned().unwrap_or_else(|| self.fresh_var());
+                        let replacement = assoc_map
+                            .get(name)
+                            .cloned()
+                            .unwrap_or_else(|| self.fresh_var());
                         subst.insert(*id, replacement);
                     }
                     let resolved_default = self.substitute_type(default_ty, &subst);
@@ -538,12 +550,16 @@ impl TypeChecker {
         let (target_ty, target_name, concept_name_opt) = match &inst.kind {
             InstanceKind::Inherent(target) => {
                 let target_ty = self.resolve_type_expr_with_vars(target, &mut tvars);
-                let target_name = self.type_name_key(&target_ty).unwrap_or_else(|| "<unknown>".into());
+                let target_name = self
+                    .type_name_key(&target_ty)
+                    .unwrap_or_else(|| "<unknown>".into());
                 (target_ty, target_name, None)
             }
             InstanceKind::Concept { concept, for_type } => {
                 let target_ty = self.resolve_type_expr_with_vars(for_type, &mut tvars);
-                let target_name = self.type_name_key(&target_ty).unwrap_or_else(|| "<unknown>".into());
+                let target_name = self
+                    .type_name_key(&target_ty)
+                    .unwrap_or_else(|| "<unknown>".into());
                 (target_ty, target_name, Some(concept.clone()))
             }
         };
@@ -556,7 +572,12 @@ impl TypeChecker {
                     .get(&(concept_name.clone(), target_name.clone()))
                     .and_then(|ci| ci.methods.get(&method.name))
                     .cloned()
-            } else if method.params.first().map(|p| p.name == "self").unwrap_or(false) {
+            } else if method
+                .params
+                .first()
+                .map(|p| p.name == "self")
+                .unwrap_or(false)
+            {
                 self.inherent_methods
                     .get(&target_name)
                     .and_then(|m| m.get(&method.name))
@@ -574,7 +595,12 @@ impl TypeChecker {
         }
     }
 
-    pub(crate) fn check_method_body(&mut self, method: &MethodDef, scheme: &TypeScheme, resolved: &ResolvedModule) {
+    pub(crate) fn check_method_body(
+        &mut self,
+        method: &MethodDef,
+        scheme: &TypeScheme,
+        resolved: &ResolvedModule,
+    ) {
         let (inst_ty, inst_bounds) = self.instantiate_scheme_with_bounds(scheme);
         let Type::Function(param_types, ret_ty) = inst_ty else {
             self.errors.push(TypeError {

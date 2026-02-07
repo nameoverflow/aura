@@ -321,9 +321,7 @@ fn test_struct_pattern_missing_fields_error() {
 
 #[test]
 fn test_or_pattern_exhaustive() {
-    let result = typecheck_str(
-        "def test(x: Bool) -> Int = match x { true | false => 1 }",
-    );
+    let result = typecheck_str("def test(x: Bool) -> Int = match x { true | false => 1 }");
     assert!(result.is_ok(), "{:?}", result.err());
 }
 
@@ -421,9 +419,7 @@ fn test_effect_polymorphism_missing_in_caller() {
 
 #[test]
 fn test_contracts_bool_typechecking() {
-    let result = typecheck_str(
-        "def f(x: Int) -> Int requires x > 0 ensures result > 0 = x",
-    );
+    let result = typecheck_str("def f(x: Int) -> Int requires x > 0 ensures result > 0 = x");
     assert!(result.is_ok(), "{:?}", result.err());
 }
 
@@ -580,9 +576,7 @@ fn test_ambiguous_auto_from_no_conversion() {
 #[test]
 fn test_try_on_plain_type_error() {
     // Using ? on a plain Int should error
-    let result = typecheck_str(
-        "def bad(x: Int) -> Int = x?",
-    );
+    let result = typecheck_str("def bad(x: Int) -> Int = x?");
     assert!(result.is_err());
 }
 

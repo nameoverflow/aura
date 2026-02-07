@@ -8,7 +8,13 @@ use crate::types::Type;
 use super::{TypeChecker, TypeEnv, TypeError, TypeScheme};
 
 impl TypeChecker {
-    pub(crate) fn bind_pattern(&mut self, pattern: &Pattern, expected: &Type, env: &mut TypeEnv, span: Span) {
+    pub(crate) fn bind_pattern(
+        &mut self,
+        pattern: &Pattern,
+        expected: &Type,
+        env: &mut TypeEnv,
+        span: Span,
+    ) {
         match pattern {
             Pattern::Wildcard(_) => {}
             Pattern::Ident(name, _) => {
@@ -224,12 +230,17 @@ impl TypeChecker {
         }
     }
 
-    pub(crate) fn check_match_exhaustiveness(&mut self, scrut_ty: &Type, arms: &[MatchArm], span: Span) {
+    pub(crate) fn check_match_exhaustiveness(
+        &mut self,
+        scrut_ty: &Type,
+        arms: &[MatchArm],
+        span: Span,
+    ) {
         let scrut_ty = self.apply(scrut_ty);
 
-        let has_catch_all = arms.iter().any(|arm| {
-            arm.guard.is_none() && self.pattern_has_catch_all(&arm.pattern)
-        });
+        let has_catch_all = arms
+            .iter()
+            .any(|arm| arm.guard.is_none() && self.pattern_has_catch_all(&arm.pattern));
 
         if has_catch_all {
             return;
@@ -408,9 +419,15 @@ impl TypeChecker {
                 }
             }
             Pattern::Literal(lit, _) => match lit {
-                LitPattern::Bool(b) => { bools.insert(*b); }
-                LitPattern::Int(n) => { int_lits.insert(*n); }
-                LitPattern::String(s) => { string_lits.insert(s.clone()); }
+                LitPattern::Bool(b) => {
+                    bools.insert(*b);
+                }
+                LitPattern::Int(n) => {
+                    int_lits.insert(*n);
+                }
+                LitPattern::String(s) => {
+                    string_lits.insert(s.clone());
+                }
                 _ => {}
             },
             Pattern::Or(pats, _) => {

@@ -1,0 +1,16 @@
+[package]
+name = "aura"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "aura"
+path = "src/main.rs"
+
+[dependencies]
+aura_lexer = { workspace = true }
+aura_parser = { workspace = true }
+aura_resolve = { workspace = true }
+aura_types = { workspace = true }
+aura_codegen = { workspace = true }
+inkwell = { workspace = true }

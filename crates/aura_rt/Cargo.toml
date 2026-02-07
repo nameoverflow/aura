@@ -1,0 +1,6 @@
+[package]
+name = "aura_rt"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

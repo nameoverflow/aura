@@ -112,6 +112,9 @@ impl Resolver {
             "Map",
             "Set",
             "ConstraintError",
+            "Duration",
+            "Timeout",
+            "Runtime",
         ] {
             let id = resolver.fresh_id();
             resolver.scope.define(ty.to_string(), id);

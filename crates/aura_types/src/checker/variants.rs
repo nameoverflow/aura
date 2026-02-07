@@ -266,7 +266,11 @@ impl TypeChecker {
         )
     }
 
-    pub(crate) fn instantiate_refined_base_for_args(&self, name: &str, args: &[Type]) -> Option<Type> {
+    pub(crate) fn instantiate_refined_base_for_args(
+        &self,
+        name: &str,
+        args: &[Type],
+    ) -> Option<Type> {
         let info = self.refined_info.get(name)?;
         if info.type_args.len() != args.len() {
             return None;
