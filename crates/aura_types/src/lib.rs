@@ -1,5 +1,5 @@
-pub mod infer;
+pub mod checker;
 pub mod types;
 
-pub use infer::{TypeChecker, TypeError};
+pub use checker::{TypeChecker, TypeError, TypedModule, VariantTypeInfo};
 pub use types::*;
