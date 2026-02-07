@@ -11,8 +11,8 @@ Aura's type system is built on algebraic data types (ADTs): **product types** (s
 
 ## Current Implementation Status (as of February 7, 2026)
 
-- **Implemented:** Struct and sum type parsing, generic type parameters, variant constructor typing, tuple type/value support, tuple destructuring via patterns, struct field access typing, `with` expression typing.
-- **Partial:** Type alias handling is limited (not fully transparent alias semantics), recursive-cycle validation is not an explicit dedicated pass.
+- **Implemented:** Struct and sum type parsing, generic type parameters, variant constructor typing, tuple type/value support, tuple destructuring via patterns, struct field access typing, `with` expression typing, transparent type alias expansion (parameterized and non-parameterized), recursive type definitions.
+- **Partial:** Recursive-cycle validation is not an explicit dedicated pass (handled naturally through GC allocation).
 - **Deferred:** Full optimized/runtime representation concerns (allocation/layout optimizations) remain outside this phase implementation.
 
 ## Design Decisions

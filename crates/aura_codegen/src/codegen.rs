@@ -17,6 +17,7 @@ use aura_parser::ast;
 use aura_types::types::Type;
 
 /// Info about a struct type: its LLVM type and field names in order.
+#[allow(dead_code)] // field_types needed for P1+ generic codegen
 struct StructInfo<'ctx> {
     llvm_type: StructType<'ctx>,
     field_names: Vec<String>,
@@ -24,6 +25,7 @@ struct StructInfo<'ctx> {
 }
 
 /// Info about a sum type (tagged union).
+#[allow(dead_code)] // variants/name needed for P1+ generic codegen
 struct SumTypeInfo<'ctx> {
     /// LLVM struct type: { i64 (tag), payload... }
     llvm_type: StructType<'ctx>,
@@ -450,11 +452,70 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(Some(global.as_pointer_value().into()))
             }
             ast::Expr::Pipeline(lhs, rhs, _) => {
-                // Pipeline: a |> f(args) — evaluate lhs, then pass to rhs
-                // For P0, just evaluate both sides
-                let _lhs_val = self.compile_expr(lhs)?;
-                let rhs_val = self.compile_expr(rhs)?;
-                Ok(rhs_val)
+                // Pipeline: a |> f(args) desugars to f(a, args)
+                let lhs_val = self.compile_expr(lhs)?.ok_or("pipeline LHS produced no value")?;
+                match rhs.as_ref() {
+                    ast::Expr::Call(callee, args, _) => {
+                        // a |> f(x, y) => f(a, x, y)
+                        if let ast::Expr::Ident(name, _) = callee.as_ref() {
+                            if name == "print" || name == "println" {
+                                // For print/println pipeline, just pass LHS as the argument
+                                let mut all_args = vec![lhs.as_ref().clone()];
+                                all_args.extend(args.iter().cloned());
+                                return self.compile_print(name, &all_args);
+                            }
+                            if self.variant_info.contains_key(name) {
+                                // Variant constructor in pipeline: a |> Some()
+                                let mut all_args = vec![lhs.as_ref().clone()];
+                                all_args.extend(args.iter().cloned());
+                                return self.compile_variant_call(name, &all_args);
+                            }
+                        }
+                        let callee_name = match callee.as_ref() {
+                            ast::Expr::Ident(name, _) => name.clone(),
+                            _ => return Err("complex callees not yet supported".into()),
+                        };
+                        let function = *self
+                            .functions
+                            .get(&callee_name)
+                            .ok_or_else(|| format!("undefined function '{callee_name}'"))?;
+                        let mut compiled_args: Vec<BasicMetadataValueEnum<'ctx>> =
+                            vec![lhs_val.into()];
+                        for arg in args {
+                            let val =
+                                self.compile_expr(arg)?.ok_or("expected argument value")?;
+                            compiled_args.push(val.into());
+                        }
+                        let call = self
+                            .builder
+                            .build_call(function, &compiled_args, &callee_name)
+                            .unwrap();
+                        Ok(call.try_as_basic_value().left())
+                    }
+                    ast::Expr::Ident(name, _) => {
+                        // a |> f => f(a)
+                        if name == "print" || name == "println" {
+                            let all_args = vec![lhs.as_ref().clone()];
+                            return self.compile_print(name, &all_args);
+                        }
+                        let function = *self
+                            .functions
+                            .get(name)
+                            .ok_or_else(|| format!("undefined function '{name}'"))?;
+                        let compiled_args: Vec<BasicMetadataValueEnum<'ctx>> =
+                            vec![lhs_val.into()];
+                        let call = self
+                            .builder
+                            .build_call(function, &compiled_args, name)
+                            .unwrap();
+                        Ok(call.try_as_basic_value().left())
+                    }
+                    _ => {
+                        // Fallback: evaluate RHS (e.g., method calls deferred)
+                        let rhs_val = self.compile_expr(rhs)?;
+                        Ok(rhs_val)
+                    }
+                }
             }
             ast::Expr::Break(_) => {
                 if let Some(exit_bb) = self.loop_exit_stack.last() {
@@ -1854,5 +1915,35 @@ mod tests {
         );
         // Guard should produce a conditional branch
         assert!(ir.contains("guard_pass") || ir.contains("icmp sgt"));
+    }
+
+    #[test]
+    fn test_pipeline_call() {
+        let ir = compile_to_ir(
+            "def double(x: Int) -> Int = x * 2\n\
+             def main() -> Int = 5 |> double()",
+        );
+        // Pipeline should compile to a call to double with 5 as argument
+        assert!(ir.contains("call i64 @double(i64"));
+    }
+
+    #[test]
+    fn test_pipeline_with_extra_args() {
+        let ir = compile_to_ir(
+            "def add(x: Int, y: Int) -> Int = x + y\n\
+             def main() -> Int = 10 |> add(3)",
+        );
+        // Pipeline should compile to a call to add with 10 and 3
+        assert!(ir.contains("call i64 @add(i64"));
+    }
+
+    #[test]
+    fn test_pipeline_bare_function() {
+        let ir = compile_to_ir(
+            "def negate(x: Int) -> Int = 0 - x\n\
+             def main() -> Int = 42 |> negate",
+        );
+        // Pipeline with bare function name should call negate(42)
+        assert!(ir.contains("call i64 @negate(i64"));
     }
 }

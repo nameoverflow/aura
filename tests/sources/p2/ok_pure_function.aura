@@ -1,0 +1,6 @@
+// Pure functions calling other pure functions
+def add(x: Int, y: Int) -> Int = x + y
+
+def double(x: Int) -> Int = add(x, x)
+
+def quad(x: Int) -> Int = double(double(x))

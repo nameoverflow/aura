@@ -1,0 +1,4 @@
+// Compound constraint with 'and'
+type Bounded = Int where self >= 0 and self <= 100
+
+def use_bounded(b: Bounded) -> Int = b.value

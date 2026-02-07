@@ -1,0 +1,4 @@
+// Function with multiple effects
+def fetch_and_log(url: String) -> String [Net, Log] = url
+
+def caller() -> String [Net, Log] = fetch_and_log("http://example.com")

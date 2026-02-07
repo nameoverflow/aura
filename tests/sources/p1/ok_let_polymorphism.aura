@@ -1,0 +1,9 @@
+// Let-polymorphism: a polymorphic function used at multiple types
+identity: a -> a
+def identity(x) = x
+
+def test() -> Int = {
+  let a = identity(42)
+  let b = identity("hello")
+  a
+}

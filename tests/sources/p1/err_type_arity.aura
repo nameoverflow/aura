@@ -1,0 +1,5 @@
+// Wrong number of type arguments should produce a type error
+type Box a = { value: a }
+
+// Option expects 1 argument, giving 2
+def bad() -> Option Int String = None

@@ -1,0 +1,12 @@
+// Should error: instance missing required method
+concept Describable {
+  def describe(self) -> String
+  def short_desc(self) -> String
+}
+
+type Item = { name: String }
+
+instance Describable for Item {
+  def describe(self) -> String = self.name
+  // Missing: short_desc
+}

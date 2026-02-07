@@ -1,0 +1,8 @@
+// Non-exhaustive match should produce a type error
+type Color = Red | Green | Blue
+
+def describe(c: Color) -> Int =
+  match c {
+    Red => 1,
+    Green => 2
+  }

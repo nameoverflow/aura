@@ -364,6 +364,9 @@ impl Resolver {
                     self.resolve_expr(constraint);
                     self.scope.pop();
                 }
+                TypeDefKind::Alias(ty) => {
+                    self.resolve_type_expr(ty);
+                }
             },
             Item::ConceptDef(cd) => self.resolve_concept_def(cd),
             Item::InstanceDef(inst) => self.resolve_instance_def(inst),

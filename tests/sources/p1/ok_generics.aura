@@ -1,0 +1,20 @@
+// Generic functions with implicit quantification
+identity: a -> a
+def identity(x) = x
+
+// Generic pair struct
+type Pair a b = { first: a, second: b }
+
+def make_pair(a: Int, b: String) -> Pair Int String =
+  Pair { first: a, second: b }
+
+def get_first(p: Pair Int String) -> Int = p.first
+
+// Generic sum type
+type Maybe a = Just a | Nothing
+
+def from_maybe(m: Maybe Int, default_val: Int) -> Int =
+  match m {
+    Just(x) => x,
+    Nothing => default_val
+  }

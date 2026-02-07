@@ -88,6 +88,7 @@ struct ConceptInfo {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // assoc_types needed for P1+ associated type resolution in dispatch
 struct ConceptInstanceInfo {
     concept: String,
     target_name: String,
@@ -158,6 +159,8 @@ pub struct TypeChecker {
     associated_functions: HashMap<String, HashMap<String, TypeScheme>>,
     concept_instances: HashMap<(String, String), ConceptInstanceInfo>,
     fn_effects: HashMap<DefId, FunctionEffectScheme>,
+    /// Transparent type aliases: name -> (type_params, resolved_type)
+    type_aliases: HashMap<String, (Vec<String>, Type)>,
 
     // Kept for typed output compatibility
     struct_fields: HashMap<String, Vec<(String, Type)>>,
@@ -191,6 +194,7 @@ impl TypeChecker {
             associated_functions: HashMap::new(),
             concept_instances: HashMap::new(),
             fn_effects: HashMap::new(),
+            type_aliases: HashMap::new(),
 
             struct_fields: HashMap::new(),
 
@@ -287,6 +291,13 @@ impl TypeChecker {
         for item in &resolved.module.items {
             if let Item::ConceptDef(cd) = item {
                 self.collect_concept_def(cd);
+            }
+        }
+
+        // Pass 2b: type-check default concept method bodies.
+        for item in &resolved.module.items {
+            if let Item::ConceptDef(cd) = item {
+                self.check_concept_default_bodies(cd, resolved);
             }
         }
 
@@ -488,6 +499,11 @@ impl TypeChecker {
                         .insert("new".into(), ctor_sig);
                 }
             }
+            TypeDefKind::Alias(ty) => {
+                let resolved = self.resolve_type_expr_with_vars(ty, &mut tvars);
+                self.type_aliases
+                    .insert(td.name.clone(), (td.type_params.clone(), resolved));
+            }
         }
     }
 
@@ -608,6 +624,86 @@ impl TypeChecker {
             quantified,
             bounds: Vec::new(),
             ty: self.apply(&fn_ty),
+        }
+    }
+
+    /// Type-check default method bodies in a concept definition.
+    /// The body is checked with `self` bound to the abstract Self type variable.
+    fn check_concept_default_bodies(&mut self, cd: &ConceptDef, resolved: &ResolvedModule) {
+        let concept_info = match self.concepts.get(&cd.name) {
+            Some(info) => info.clone(),
+            None => return,
+        };
+        let self_ty = Type::Var(concept_info.self_var);
+
+        for method in &cd.methods {
+            let Some(body) = &method.default_body else {
+                continue;
+            };
+
+            // Build env with self and method params
+            let mut env: TypeEnv = HashMap::new();
+            let mut tvars = HashMap::new();
+
+            for param in &method.params {
+                if param.name == "self" {
+                    env.insert(
+                        "self".into(),
+                        TypeScheme::monomorphic(self_ty.clone()),
+                    );
+                } else {
+                    let ty = match &param.ty {
+                        Some(te) => {
+                            let base = self.resolve_type_expr_with_vars(te, &mut tvars);
+                            self.replace_special_type_names(
+                                base,
+                                &self_ty,
+                                &concept_info
+                                    .assoc_var_ids
+                                    .iter()
+                                    .map(|(k, v)| (k.clone(), Type::Var(*v)))
+                                    .collect(),
+                            )
+                        }
+                        None => self.fresh_var(),
+                    };
+                    env.insert(param.name.clone(), TypeScheme::monomorphic(ty));
+                }
+            }
+
+            // Push assumption that Self implements this concept (and its supers)
+            // so method calls on self can resolve concept methods.
+            let mut assumed: HashMap<TypeVarId, HashSet<String>> = HashMap::new();
+            let mut concept_set = HashSet::new();
+            concept_set.insert(cd.name.clone());
+            // Also add super-concepts transitively
+            let mut stack: Vec<String> = concept_info.supers.clone();
+            while let Some(sup) = stack.pop() {
+                if concept_set.insert(sup.clone()) {
+                    if let Some(sup_info) = self.concepts.get(&sup) {
+                        stack.extend(sup_info.supers.clone());
+                    }
+                }
+            }
+            assumed.insert(concept_info.self_var, concept_set);
+            self.bound_assumptions.push(assumed);
+
+            // Infer body type
+            let body_ty = self.infer_expr(body, &mut env, resolved);
+
+            self.bound_assumptions.pop();
+
+            // Check against declared return type
+            if let Some(ret_te) = &method.return_type {
+                let assoc_map: HashMap<String, Type> = concept_info
+                    .assoc_var_ids
+                    .iter()
+                    .map(|(k, v)| (k.clone(), Type::Var(*v)))
+                    .collect();
+                let expected = self.resolve_type_expr_with_vars(ret_te, &mut tvars);
+                let expected = self.replace_special_type_names(expected, &self_ty, &assoc_map);
+                self.unify(&body_ty, &expected, body.span());
+            }
         }
     }
 
@@ -1941,6 +2037,7 @@ impl TypeChecker {
                 }
 
                 self.check_match_exhaustiveness(&scrut_ty, arms, *span);
+                self.check_match_redundancy(&scrut_ty, arms);
 
                 let result = self.apply(&result_ty);
                 self.record_type(*span, result.clone());
@@ -3137,6 +3234,136 @@ impl TypeChecker {
         }
     }
 
+    /// Check for unreachable (redundant) match arms. An arm is unreachable if
+    /// all patterns it covers are already covered by previous unguarded arms.
+    fn check_match_redundancy(&mut self, _scrut_ty: &Type, arms: &[MatchArm]) {
+        // Track whether a catch-all has been seen among unguarded arms.
+        let mut catch_all_seen = false;
+        // For sum types: constructors fully covered (all sub-patterns are catch-all).
+        let mut fully_covered_constructors: HashSet<String> = HashSet::new();
+        // For Bool: which literals have been covered.
+        let mut covered_bools: HashSet<bool> = HashSet::new();
+        // For literal patterns: which literal values have been covered.
+        let mut covered_int_lits: HashSet<i64> = HashSet::new();
+        let mut covered_string_lits: HashSet<String> = HashSet::new();
+
+        for (i, arm) in arms.iter().enumerate() {
+            // Skip the first arm — it's never redundant.
+            if i > 0 {
+                let is_redundant = self.arm_is_redundant(
+                    &arm.pattern,
+                    catch_all_seen,
+                    &fully_covered_constructors,
+                    &covered_bools,
+                    &covered_int_lits,
+                    &covered_string_lits,
+                );
+                if is_redundant {
+                    self.errors.push(TypeError {
+                        message: "unreachable match arm".into(),
+                        span: arm.span,
+                    });
+                }
+            }
+
+            // Only unguarded arms contribute to coverage.
+            if arm.guard.is_none() {
+                if self.pattern_has_catch_all(&arm.pattern) {
+                    catch_all_seen = true;
+                }
+                self.collect_full_coverage(
+                    &arm.pattern,
+                    &mut fully_covered_constructors,
+                    &mut covered_bools,
+                    &mut covered_int_lits,
+                    &mut covered_string_lits,
+                );
+            }
+        }
+    }
+
+    /// Returns true if this arm's pattern is fully subsumed by already-covered patterns.
+    fn arm_is_redundant(
+        &self,
+        pattern: &Pattern,
+        catch_all_seen: bool,
+        fully_covered_constructors: &HashSet<String>,
+        covered_bools: &HashSet<bool>,
+        covered_int_lits: &HashSet<i64>,
+        covered_string_lits: &HashSet<String>,
+    ) -> bool {
+        // If a previous catch-all covers everything, this arm is unreachable.
+        if catch_all_seen {
+            return true;
+        }
+
+        match pattern {
+            Pattern::Wildcard(_) | Pattern::Ident(_, _) => false,
+            Pattern::Constructor(name, sub_pats, _) => {
+                // Only redundant if the constructor was fully covered
+                // (previous arm had same constructor with catch-all sub-patterns).
+                if fully_covered_constructors.contains(name) {
+                    return true;
+                }
+                // A constructor with all catch-all sub-patterns after full coverage
+                // is handled. A constructor with specific sub-patterns isn't redundant
+                // unless we also tracked the sub-pattern space (not done here).
+                let _ = sub_pats;
+                false
+            }
+            Pattern::Literal(lit, _) => match lit {
+                LitPattern::Bool(b) => covered_bools.contains(b),
+                LitPattern::Int(n) => covered_int_lits.contains(n),
+                LitPattern::String(s) => covered_string_lits.contains(s),
+                LitPattern::Float(_) => false,
+            },
+            Pattern::Or(pats, _) => pats.iter().all(|p| {
+                self.arm_is_redundant(
+                    p,
+                    catch_all_seen,
+                    fully_covered_constructors,
+                    covered_bools,
+                    covered_int_lits,
+                    covered_string_lits,
+                )
+            }),
+            Pattern::Tuple(_, _) | Pattern::Struct(_, _, _, _) => false,
+        }
+    }
+
+    /// Collect patterns that are fully covered (constructor with all catch-all sub-patterns,
+    /// or exact literals).
+    fn collect_full_coverage(
+        &self,
+        pattern: &Pattern,
+        constructors: &mut HashSet<String>,
+        bools: &mut HashSet<bool>,
+        int_lits: &mut HashSet<i64>,
+        string_lits: &mut HashSet<String>,
+    ) {
+        match pattern {
+            Pattern::Constructor(name, sub_pats, _) => {
+                // Only mark as fully covered if all sub-patterns are catch-all.
+                let all_catch_all = sub_pats.iter().all(|p| self.pattern_has_catch_all(p));
+                if all_catch_all {
+                    constructors.insert(name.clone());
+                }
+            }
+            Pattern::Literal(lit, _) => match lit {
+                LitPattern::Bool(b) => { bools.insert(*b); }
+                LitPattern::Int(n) => { int_lits.insert(*n); }
+                LitPattern::String(s) => { string_lits.insert(s.clone()); }
+                _ => {}
+            },
+            Pattern::Or(pats, _) => {
+                for p in pats {
+                    self.collect_full_coverage(p, constructors, bools, int_lits, string_lits);
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn pattern_has_catch_all(&self, pattern: &Pattern) -> bool {
         match pattern {
             Pattern::Wildcard(_) | Pattern::Ident(_, _) => true,
@@ -3194,6 +3421,23 @@ impl TypeChecker {
                     return v;
                 }
 
+                // Check for type alias
+                if let Some((params, alias_ty)) = self.type_aliases.get(name).cloned() {
+                    if params.is_empty() {
+                        return alias_ty;
+                    } else {
+                        self.errors.push(TypeError {
+                            message: format!(
+                                "type alias '{}' expects {} argument(s), got 0",
+                                name,
+                                params.len()
+                            ),
+                            span: *span,
+                        });
+                        return Type::Error;
+                    }
+                }
+
                 if let Some(arity) = self.type_arity.get(name) {
                     if *arity > 0 {
                         self.errors.push(TypeError {
@@ -3230,6 +3474,24 @@ impl TypeChecker {
                         message: format!("primitive type '{}' cannot be applied", base_name),
                         span: *span,
                     });
+                }
+
+                // Check for type alias with arguments
+                if let Some((params, alias_ty)) = self.type_aliases.get(&base_name).cloned() {
+                    if params.len() != arg_types.len() {
+                        self.errors.push(TypeError {
+                            message: format!(
+                                "type alias '{}' expects {} argument(s), got {}",
+                                base_name,
+                                params.len(),
+                                arg_types.len()
+                            ),
+                            span: *span,
+                        });
+                        return Type::Error;
+                    }
+                    // Substitute type parameters in the alias body
+                    return self.substitute_alias_params(&alias_ty, &params, &arg_types);
                 }
 
                 if let Some(expected_arity) = self.type_arity.get(&base_name) {
@@ -3281,6 +3543,99 @@ impl TypeChecker {
             .next()
             .map(|c| c.is_ascii_lowercase())
             .unwrap_or(false)
+    }
+
+    /// Substitute type parameters in an alias body with concrete type arguments.
+    /// The alias body was resolved with fresh type vars for each param; this
+    /// method replaces those vars with the supplied arguments.
+    fn substitute_alias_params(
+        &self,
+        alias_ty: &Type,
+        _params: &[String],
+        args: &[Type],
+    ) -> Type {
+        // During collect_type_def for Alias, each param was mapped to a fresh Var.
+        // We need to find those vars in alias_ty and replace them with args.
+        // Collect the type vars that appear in the alias type positionally.
+        let vars = self.collect_alias_vars(alias_ty);
+        if vars.len() != args.len() {
+            return alias_ty.clone();
+        }
+        let mut subst: HashMap<TypeVarId, Type> = HashMap::new();
+        for (var_id, arg) in vars.iter().zip(args.iter()) {
+            subst.insert(*var_id, arg.clone());
+        }
+        self.apply_subst(alias_ty, &subst)
+    }
+
+    /// Collect unique type variable IDs from a type in order of first appearance.
+    fn collect_alias_vars(&self, ty: &Type) -> Vec<TypeVarId> {
+        let mut vars = Vec::new();
+        let mut seen = HashSet::new();
+        self.collect_alias_vars_inner(ty, &mut vars, &mut seen);
+        vars
+    }
+
+    fn collect_alias_vars_inner(
+        &self,
+        ty: &Type,
+        vars: &mut Vec<TypeVarId>,
+        seen: &mut HashSet<TypeVarId>,
+    ) {
+        match ty {
+            Type::Var(id) => {
+                let resolved = self.substitution.get(id);
+                if let Some(resolved_ty) = resolved {
+                    self.collect_alias_vars_inner(resolved_ty, vars, seen);
+                } else if seen.insert(*id) {
+                    vars.push(*id);
+                }
+            }
+            Type::Named(_, args) => {
+                for a in args {
+                    self.collect_alias_vars_inner(a, vars, seen);
+                }
+            }
+            Type::Product(ts) => {
+                for t in ts {
+                    self.collect_alias_vars_inner(t, vars, seen);
+                }
+            }
+            Type::Function(params, ret) => {
+                for p in params {
+                    self.collect_alias_vars_inner(p, vars, seen);
+                }
+                self.collect_alias_vars_inner(ret, vars, seen);
+            }
+            _ => {}
+        }
+    }
+
+    /// Apply a specific substitution map (not the global one) to a type.
+    fn apply_subst(&self, ty: &Type, subst: &HashMap<TypeVarId, Type>) -> Type {
+        match ty {
+            Type::Var(id) => {
+                if let Some(replacement) = subst.get(id) {
+                    replacement.clone()
+                } else if let Some(resolved) = self.substitution.get(id) {
+                    self.apply_subst(resolved, subst)
+                } else {
+                    ty.clone()
+                }
+            }
+            Type::Named(name, args) => {
+                let new_args = args.iter().map(|a| self.apply_subst(a, subst)).collect();
+                Type::Named(name.clone(), new_args)
+            }
+            Type::Product(ts) => {
+                Type::Product(ts.iter().map(|t| self.apply_subst(t, subst)).collect())
+            }
+            Type::Function(params, ret) => Type::Function(
+                params.iter().map(|p| self.apply_subst(p, subst)).collect(),
+                Box::new(self.apply_subst(ret, subst)),
+            ),
+            _ => ty.clone(),
+        }
     }
 
     fn generalize(&self, ty: &Type, env: &TypeEnv) -> TypeScheme {
@@ -4276,5 +4631,135 @@ mod tests {
              def x() -> Int = 1",
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_duplicate_instance_error() {
+        let result = typecheck_str(
+            "type Dog = { name: String }\n\
+             concept Greetable { def greet(self) -> String }\n\
+             instance Greetable for Dog { def greet(self) -> String = self.name }\n\
+             instance Greetable for Dog { def greet(self) -> String = self.name }",
+        );
+        assert!(result.is_err());
+        let errors = result.err().expect("expected errors");
+        assert!(errors.iter().any(|e| e.message.contains("duplicate")));
+    }
+
+    #[test]
+    fn test_missing_method_error() {
+        let result = typecheck_str(
+            "type Dog = { name: String }\n\
+             concept Greetable {\n\
+               def greet(self) -> String\n\
+               def farewell(self) -> String\n\
+             }\n\
+             instance Greetable for Dog { def greet(self) -> String = self.name }",
+        );
+        assert!(result.is_err());
+        let errors = result.err().expect("expected errors");
+        assert!(errors.iter().any(|e| e.message.contains("missing")));
+    }
+
+    #[test]
+    fn test_default_method_inherited() {
+        let result = typecheck_str(
+            "type Dog = { name: String }\n\
+             concept Greetable {\n\
+               def greet(self) -> String\n\
+               def loud_greet(self) -> String = self.greet()\n\
+             }\n\
+             instance Greetable for Dog { def greet(self) -> String = self.name }\n\
+             def test(d: Dog) -> String = d.loud_greet()",
+        );
+        assert!(result.is_ok(), "errors: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_recursive_type_def() {
+        let result = typecheck_str(
+            "type Expr = Lit Int | Add Expr Expr\n\
+             def compute(e: Expr) -> Int = match e {\n\
+               Lit(n) => n,\n\
+               Add(l, r) => compute(l) + compute(r)\n\
+             }",
+        );
+        assert!(result.is_ok(), "errors: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_ambiguous_auto_from_no_conversion() {
+        // Two variants wrapping the same type should NOT auto-derive From
+        let result = typecheck_str(
+            "type Error = A String | B String\n\
+             type Wrapper = WrapA String | WrapB String\n\
+             wrap_err: String -> Result Int Wrapper\n\
+             def wrap_err(s) = Err(WrapA(s))\n\
+             convert: String -> Result Int Error\n\
+             def convert(s) = {\n\
+               let w = wrap_err(s)?\n\
+               Ok(w)\n\
+             }",
+        );
+        // Should error because Wrapper cannot auto-convert to Error
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_try_on_plain_type_error() {
+        // Using ? on a plain Int should error
+        let result = typecheck_str(
+            "def bad(x: Int) -> Int = x?",
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_redundant_match_arm() {
+        let result = typecheck_str(
+            "def test(x: Int) -> Int = match x {\n\
+               _ => 1,\n\
+               0 => 2\n\
+             }",
+        );
+        assert!(result.is_err());
+        let errors = result.err().expect("expected errors");
+        assert!(errors.iter().any(|e| e.message.contains("unreachable")));
+    }
+
+    #[test]
+    fn test_compound_refined_constraint() {
+        let result = typecheck_str(
+            "type Bounded = Int where self >= 0 and self <= 100\n\
+             def use_bounded(b: Bounded) -> Int = b.value",
+        );
+        assert!(result.is_ok(), "errors: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_type_alias_transparent() {
+        let result = typecheck_str(
+            "type MyInt = Int\n\
+             def add_one(x: MyInt) -> MyInt = x + 1",
+        );
+        assert!(result.is_ok(), "errors: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_with_expression() {
+        let result = typecheck_str(
+            "type Point = { x: Int, y: Int }\n\
+             def move_right(p: Point) -> Point = p with { x: p.x + 1 }",
+        );
+        assert!(result.is_ok(), "errors: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_pipeline_type_checking() {
+        let result = typecheck_str(
+            "def double(x: Int) -> Int = x * 2\n\
+             def main() -> Int = 5 |> double()",
+        );
+        assert!(result.is_ok(), "errors: {:?}", result.err());
     }
 }

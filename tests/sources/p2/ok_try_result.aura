@@ -1,0 +1,16 @@
+// Basic ? operator on Result with auto-From conversion
+type IoError = IoFailed String
+type DbError = DbFailed String
+type AppError = Io IoError | Db DbError
+
+load: Int -> Result Int IoError
+def load(x) = Ok(x)
+
+query: Int -> Result Int DbError
+def query(x) = Ok(x)
+
+def run(x: Int) -> Result Int AppError = {
+  let a = load(x)?
+  let b = query(a)?
+  Ok(a + b)
+}

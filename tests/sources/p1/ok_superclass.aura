@@ -1,0 +1,21 @@
+// Superclass constraints
+concept Printable {
+  def print_val(self) -> String
+}
+
+concept Showable: Printable {
+  def show_val(self) -> String
+}
+
+type Widget = { label: String }
+
+instance Printable for Widget {
+  def print_val(self) -> String = self.label
+}
+
+instance Showable for Widget {
+  def show_val(self) -> String = self.label
+}
+
+show: forall (Showable a). a -> String
+def show(x) = x.show_val()

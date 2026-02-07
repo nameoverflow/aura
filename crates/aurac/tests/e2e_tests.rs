@@ -209,3 +209,12 @@ fn test_string_match() {
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines, vec!["1", "2", "0"]);
 }
+
+#[test]
+fn test_pipeline() {
+    let (ok, output, _) = compile_and_run("pipeline.aura");
+    assert!(ok, "program exited with error: {}", output);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    // 5 |> double() = 10, 10 |> add(3) = 13
+    assert_eq!(lines, vec!["10", "13"]);
+}

@@ -1,0 +1,14 @@
+// Should error: duplicate instance
+concept Greetable {
+  def greet(self) -> String
+}
+
+type Person = { name: String }
+
+instance Greetable for Person {
+  def greet(self) -> String = self.name
+}
+
+instance Greetable for Person {
+  def greet(self) -> String = self.name
+}

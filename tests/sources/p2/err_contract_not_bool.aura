@@ -1,0 +1,4 @@
+// Contract expression must be Bool, not Int
+def bad(x: Int) -> Int
+  requires x + 1
+= x

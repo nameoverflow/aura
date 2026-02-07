@@ -1,0 +1,4 @@
+// Refined type: NonZero
+type NonZero = Int where self != 0
+
+def safe_div(a: Int, b: NonZero) -> Int = a / b.value

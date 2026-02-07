@@ -1,0 +1,14 @@
+// Type alias to primitive
+type MyInt = Int
+
+// Type alias to product
+type Pair = Int * String
+
+// Type alias to function type
+type IntFn = Int -> Int
+
+def use_alias(x: MyInt) -> MyInt = x + 1
+
+def use_pair() -> Pair = (42, "hello")
+
+def apply_fn(f: IntFn, x: Int) -> Int = f(x)

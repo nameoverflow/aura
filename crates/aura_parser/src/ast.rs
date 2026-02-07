@@ -132,6 +132,8 @@ pub enum TypeDefKind {
         base_type: TypeExpr,
         constraint: Expr,
     },
+    /// Transparent type alias: `type Name = ExistingType`
+    Alias(TypeExpr),
 }
 
 #[derive(Debug, Clone)]

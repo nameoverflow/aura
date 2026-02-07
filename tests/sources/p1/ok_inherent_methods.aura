@@ -1,0 +1,14 @@
+// Inherent methods and associated functions
+type Counter = { value: Int }
+
+instance Counter {
+  def new() -> Counter = Counter { value: 0 }
+  def get(self) -> Int = self.value
+  def increment(self) -> Counter = Counter { value: self.value + 1 }
+}
+
+def test() -> Int = {
+  let c = Counter.new()
+  let c2 = c.increment()
+  c2.get()
+}

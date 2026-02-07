@@ -14,8 +14,8 @@ Pattern matching is a core language feature in Aura. It enables destructuring of
 
 - **Implemented:** Wildcard/variable/literal/constructor/tuple/struct/rest/or-pattern parsing and typing, nested pattern binding, guard typing, and destructuring in `let`/`for`.
 - **Implemented (subset):** Exhaustiveness checks for common sum-type and `Bool` cases, including awareness of guarded arms and or-pattern constructor coverage.
-- **Partial:** Exhaustiveness uses pragmatic checks, not a full Maranget matrix algorithm yet.
-- **Deferred/Partial:** Redundancy (unreachable arm) diagnostics and full pattern-codegen support for all pattern forms are not complete.
+- **Implemented:** Redundancy (unreachable arm) detection: catch-all-after-coverage, duplicate constructors, duplicate literals.
+- **Partial:** Exhaustiveness uses pragmatic checks, not a full Maranget matrix algorithm yet. Codegen support covers basic patterns (int/bool/string/constructor with guards) but not struct patterns or or-patterns.
 
 ## Design Decisions
 

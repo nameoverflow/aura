@@ -1,0 +1,14 @@
+// Concept with a default method body
+concept Greetable {
+  def greet(self) -> String
+  def loud_greet(self) -> String = self.greet()
+}
+
+type Person = { name: String }
+
+instance Greetable for Person {
+  def greet(self) -> String = self.name
+  // loud_greet uses default from concept
+}
+
+def test(p: Person) -> String = p.loud_greet()

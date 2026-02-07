@@ -1,0 +1,16 @@
+// Should error: implementing Showable without implementing Printable
+concept Printable {
+  def print_val(self) -> String
+}
+
+concept Showable: Printable {
+  def show_val(self) -> String
+}
+
+type Widget = { label: String }
+
+// Missing: instance Printable for Widget
+
+instance Showable for Widget {
+  def show_val(self) -> String = self.label
+}

@@ -1,0 +1,10 @@
+// Should error: unreachable match arm
+type Color = Red | Green | Blue
+
+def name(c: Color) -> Int =
+  match c {
+    Red => 1,
+    Green => 2,
+    _ => 3,
+    Blue => 4
+  }

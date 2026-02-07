@@ -1,0 +1,5 @@
+// Functional update (with) should type-check
+type Point = { x: Int, y: Int }
+
+def move_right(p: Point) -> Point =
+  p with { x: p.x + 1 }

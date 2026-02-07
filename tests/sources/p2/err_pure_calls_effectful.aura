@@ -1,0 +1,5 @@
+// Should error: pure function calls effectful function
+log_it: Int -> Int [Log]
+def log_it(x) = x
+
+def compute(x: Int) -> Int = log_it(x)

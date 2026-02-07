@@ -1,0 +1,8 @@
+// Recursive type definitions should work
+type Expr = Lit Int | Add Expr Expr
+
+def compute(e: Expr) -> Int =
+  match e {
+    Lit(n) => n,
+    Add(l, r) => compute(l) + compute(r)
+  }

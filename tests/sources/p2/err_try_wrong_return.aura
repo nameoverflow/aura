@@ -1,0 +1,4 @@
+// Using ? in a function that doesn't return Result/Option is an error
+type MyResult = Ok Int | Err String
+
+def bad(x: MyResult) -> Int = x?

@@ -1,0 +1,6 @@
+// Effect hierarchy: Db.Write implies Db.Read
+read_db: Int -> Int [Db.Read]
+def read_db(x) = x
+
+write_db: Int -> Int [Db.Write]
+def write_db(x) = read_db(x)
