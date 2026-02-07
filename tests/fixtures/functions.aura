@@ -1,0 +1,9 @@
+def square(x: Int) -> Int = x * x
+
+def cube(x: Int) -> Int = x * square(x)
+
+def main() -> Int = {
+    println(square(5));
+    println(cube(3));
+    0
+}

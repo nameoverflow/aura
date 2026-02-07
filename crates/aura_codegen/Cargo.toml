@@ -1,0 +1,15 @@
+[package]
+name = "aura_codegen"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+aura_common = { workspace = true }
+aura_parser = { workspace = true }
+aura_resolve = { workspace = true }
+aura_types = { workspace = true }
+inkwell = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+aura_lexer = { workspace = true }

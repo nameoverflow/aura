@@ -1,0 +1,8 @@
+type Point = { x: Int, y: Int }
+
+def main() -> Int = {
+    let p = Point { x: 10, y: 20 };
+    println(p.x);
+    println(p.y);
+    0
+}

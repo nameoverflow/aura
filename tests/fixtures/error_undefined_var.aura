@@ -1,0 +1,4 @@
+def main() -> Int = {
+    println(undefined_variable);
+    0
+}

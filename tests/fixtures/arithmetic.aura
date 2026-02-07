@@ -1,0 +1,10 @@
+def add(a: Int, b: Int) -> Int = a + b
+
+def mul(a: Int, b: Int) -> Int = a * b
+
+def main() -> Int = {
+    let x = add(3, 4);
+    let y = mul(x, 2);
+    println(y);
+    0
+}

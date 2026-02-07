@@ -1,0 +1,12 @@
+def classify(x: Int) -> Int = match x {
+    0 => 0,
+    1 => 100,
+    _ => 999
+}
+
+def main() -> Int = {
+    println(classify(0));
+    println(classify(1));
+    println(classify(42));
+    0
+}

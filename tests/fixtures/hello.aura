@@ -1,0 +1,4 @@
+def main() -> Int = {
+    println("Hello, Aura!");
+    0
+}

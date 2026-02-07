@@ -1,0 +1,6 @@
+def main() -> Int = {
+    println(0xFF);
+    println(0b1010);
+    println(0o77);
+    0
+}

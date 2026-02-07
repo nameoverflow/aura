@@ -1,0 +1,18 @@
+type Shape = Circle Int | Rectangle Int Int | Nothing
+
+def area(s: Shape) -> Int = match s {
+    Circle(r) => r * r * 3,
+    Rectangle(w, h) => w * h,
+    Nothing => 0,
+    _ => 0
+}
+
+def main() -> Int = {
+    let c = Circle(5);
+    let r = Rectangle(4, 6);
+    let n = Nothing;
+    println(area(c));
+    println(area(r));
+    println(area(n));
+    0
+}

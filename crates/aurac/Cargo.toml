@@ -1,0 +1,17 @@
+[package]
+name = "aurac"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "aurac"
+path = "src/main.rs"
+
+[dependencies]
+aura_common = { workspace = true }
+aura_lexer = { workspace = true }
+aura_parser = { workspace = true }
+aura_resolve = { workspace = true }
+aura_types = { workspace = true }
+aura_codegen = { workspace = true }
+inkwell = { workspace = true }

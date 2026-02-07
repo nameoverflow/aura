@@ -1,0 +1,38 @@
+def main() -> Int = {
+    // Test break: sum 0..100 but break at 5
+    let mut total = 0;
+    for i in 0..100 {
+        if i == 5 {
+            break
+        } else {
+            ()
+        };
+        total = total + i
+    };
+    println(total);
+
+    // Test continue: sum 0..10 skipping 3
+    let mut total2 = 0;
+    for j in 0..10 {
+        if j == 3 {
+            continue
+        } else {
+            ()
+        };
+        total2 = total2 + j
+    };
+    println(total2);
+
+    // Test break in while loop
+    let mut k = 1;
+    while true {
+        k = k * 2;
+        if k >= 64 {
+            break
+        } else {
+            ()
+        }
+    };
+    println(k);
+    0
+}

@@ -1,0 +1,7 @@
+def double(x: Int) -> Int = x * 2
+def inc(x: Int) -> Int = x + 1
+
+def main() -> Int = {
+    println(double(inc(double(inc(0)))));
+    0
+}

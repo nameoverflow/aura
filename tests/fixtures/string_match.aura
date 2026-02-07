@@ -1,0 +1,12 @@
+def greet(name: String) -> Int = match name {
+    "Alice" => 1,
+    "Bob" => 2,
+    _ => 0
+}
+
+def main() -> Int = {
+    println(greet("Alice"));
+    println(greet("Bob"));
+    println(greet("Charlie"));
+    0
+}

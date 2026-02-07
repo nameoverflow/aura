@@ -1,0 +1,18 @@
+type Color = Red | Green | Blue
+
+def color_code(c: Color) -> Int = match c {
+    Red => 1,
+    Green => 2,
+    Blue => 3,
+    _ => 0
+}
+
+def main() -> Int = {
+    let r = Red;
+    let g = Green;
+    let b = Blue;
+    println(color_code(r));
+    println(color_code(g));
+    println(color_code(b));
+    0
+}

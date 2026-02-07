@@ -1,0 +1,27 @@
+[workspace]
+members = [
+    "crates/aura_common",
+    "crates/aura_lexer",
+    "crates/aura_parser",
+    "crates/aura_resolve",
+    "crates/aura_types",
+    "crates/aura_codegen",
+    "crates/aurac",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+aura_common = { path = "crates/aura_common" }
+aura_lexer = { path = "crates/aura_lexer" }
+aura_parser = { path = "crates/aura_parser" }
+aura_resolve = { path = "crates/aura_resolve" }
+aura_types = { path = "crates/aura_types" }
+aura_codegen = { path = "crates/aura_codegen" }
+thiserror = "2"
+string-interner = "0.17"
+inkwell = { version = "0.5", features = ["llvm14-0"] }

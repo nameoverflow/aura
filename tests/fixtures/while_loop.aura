@@ -1,0 +1,8 @@
+def main() -> Int = {
+    let mut n = 1;
+    while n < 100 {
+        n = n * 2
+    };
+    println(n);
+    0
+}

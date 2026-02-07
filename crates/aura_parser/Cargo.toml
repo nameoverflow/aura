@@ -1,0 +1,8 @@
+[package]
+name = "aura_parser"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+aura_common = { workspace = true }
+aura_lexer = { workspace = true }
