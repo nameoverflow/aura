@@ -11,6 +11,13 @@ Basic LLVM code generation lives in P0-05. This document covers **advanced codeg
 - **P3-02: Closures** — closure conversion
 - **P3-03: Async Concurrency** — async runtime code generation
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Not Started (P4 scope):** Advanced IR/codegen pipeline work in this document is not implemented yet.
+- **Implemented prerequisite:** Basic LLVM backend from P0 is in place and stable.
+- **Implemented prerequisite (front-end only):** New P3 syntax/typechecking for async/concurrency exists, but lowering to LLVM/runtime is not implemented.
+- **Deferred:** WASM backend, monomorphization pipeline work, advanced closure conversion, GC stack-map integration, and incremental-codegen infrastructure.
+
 ## Design Decisions
 
 ### What Moves From P0-05 to P4-02

@@ -11,6 +11,13 @@ Aura's concurrency model is based on **structured concurrency**: all concurrent 
 - **P3-01: GC** — shared values across concurrent tasks
 - **P3-02: Closures** — tasks are essentially closures
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented (front-end):** `async def` parsing and type-checker async-boundary enforcement (sync code cannot call async directly).
+- **Implemented (front-end):** `parallel`, `race`, and `timeout` syntax + AST nodes + typechecking rules, including race-arm type unification and timeout result typing.
+- **Implemented (front-end bridge):** `Runtime.block_on(...)` is recognized in typing as the sync/async bridge with proper context restrictions.
+- **Partial/Deferred:** No async executor integration, cancellation runtime, or LLVM lowering for concurrency primitives yet; these forms are still backend-deferred.
+
 ## Design Decisions
 
 ### Async Execution Model

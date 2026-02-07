@@ -9,6 +9,12 @@ Optimization passes transform the MIR to produce faster, smaller code. Aura-spec
 - **P0-05: Basic Codegen** — MIR as input
 - **P3-01: GC** — GC-aware optimizations
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Not Started:** The dedicated optimization-pass pipeline described here is not implemented.
+- **Current behavior:** Code generation relies primarily on LLVM backend defaults without Aura-specific optimization pass scheduling.
+- **Deferred:** Escape analysis, GC-pressure-specific passes, inliner heuristics, and MIR-level optimization orchestration remain future work.
+
 ## Design Decisions
 
 ### Optimization Pipeline

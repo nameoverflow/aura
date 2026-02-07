@@ -12,6 +12,12 @@ The Aura language server provides IDE features: code completion, go-to-definitio
 - **P2-01: Effect System** — effect information in hover
 - **P4-04: Formatter** — format-on-save
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Not Started:** No Aura LSP server implementation exists yet.
+- **Available building blocks:** Parser, resolver, and typechecker APIs are usable and test-covered, which provides the core analysis substrate for future LSP work.
+- **Deferred:** Incremental analysis engine, editor protocol handlers, semantic tokens, and code-action pipelines.
+
 ## Design Decisions
 
 ### Architecture

@@ -8,6 +8,13 @@ Name resolution maps every identifier in the AST to its definition. This is the 
 
 - **P0-02: Parser & AST** — the AST to resolve names in
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented:** Lexical-scope name resolution for locals, parameters, functions, types, variants, concepts, and instance method bodies.
+- **Implemented:** Built-in prelude registration for core types/functions/variants plus newer runtime-adjacent names (`Duration`, `Timeout`, `Runtime`).
+- **Implemented:** Resolution coverage for modern expression forms, including lambdas, pattern bindings, contracts, and P3 concurrency expressions (`parallel`, `race`, `timeout`).
+- **Partial/Deferred:** Full package/module graph semantics (advanced imports/re-exports/orphan-style global coherence policies) remain beyond this phase.
+
 ## Design Decisions
 
 ### Scope Model

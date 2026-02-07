@@ -9,6 +9,12 @@ Aura's package manager handles dependency resolution, version locking, and vendo
 - **P3-04: Runtime System** — `aura run` uses the package manager to find dependencies
 - **P0-02: Parser** — parse `aura.toml` configuration
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Not Started:** No package/dependency manager implementation exists yet.
+- **Current CLI scope:** `aura` command supports single-file/project-local compile-check-run flows, but no dependency resolution or lockfile/vendoring.
+- **Deferred:** `aura.toml` dependency graph resolution, lock management, download/vendoring pipeline, and registry/git integration.
+
 ## Design Decisions
 
 ### Project Configuration: `aura.toml`

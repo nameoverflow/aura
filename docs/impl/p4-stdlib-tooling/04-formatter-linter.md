@@ -10,6 +10,12 @@ Aura mandates a single canonical format (like `gofmt`) and provides a built-in l
 - **P0-03: Name Resolution** — the linter needs resolved names
 - **P2-01: Effect System** — linter checks effect correctness
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Not Started:** `aura fmt` and `aura lint` are not implemented yet.
+- **Current CLI scope:** The `aura` binary currently provides `build`, `run`, and `check` only.
+- **Deferred:** Canonical formatting rules engine, lint rule framework, diagnostics autofix/code-actions integration.
+
 ## Design Decisions
 
 ### Formatter: `aura fmt`

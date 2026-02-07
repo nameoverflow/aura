@@ -11,6 +11,13 @@ The runtime system is the supporting library linked into every compiled Aura pro
 - **P3-02: Closures** — closure representation at runtime
 - **P3-03: Async Concurrency** — async executor lives in the runtime
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented:** Runtime crate (`aura_rt`) exists with GC lifecycle functions, shadow-stack entrypoints, panic/assert helpers, and basic print/println externs.
+- **Implemented:** New `aura` CLI binary provides `build`, `run`, and `check` commands over the compiler pipeline.
+- **Implemented:** P3 fixture coverage added for async boundary and concurrency typing behavior in the typechecker test suite.
+- **Partial/Deferred:** Full runtime linking/integration for generated binaries, async executor/runtime task APIs, and complete runtime-backed lowering are not finished.
+
 ## Design Decisions
 
 ### Runtime as a Linked Library

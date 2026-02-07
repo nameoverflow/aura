@@ -10,6 +10,12 @@ Aura's core differentiator is its AI-native design. This document covers the too
 - **P4-01: Stdlib** — standard types and concepts in manifest
 - **P4-06: Package Manager** — dependency information
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Not Started:** AI integration tooling in this document has not been implemented yet.
+- **Available foundation:** Compiler front-end metadata (typed/resolved structures and effect information) exists and can support future manifest/index extraction.
+- **Deferred:** Manifest generation, semantic index build/retrieval, context extraction CLI, and policy/security filters for AI workflows.
+
 ## Design Decisions
 
 ### Manifest Generator: `aura.manifest.json`

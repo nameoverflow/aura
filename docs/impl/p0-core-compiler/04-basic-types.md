@@ -8,6 +8,13 @@ This covers the core type system infrastructure: how types are represented inter
 
 - **P0-03: Name Resolution** — resolved names and definition IDs
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented:** Core HM-style inference/unification machinery with type variables, substitution, occurs checks, and diagnostics.
+- **Implemented:** Internal type representation for primitives, named types, product types, and function types, with inference across core control-flow expressions.
+- **Implemented:** Foundational typing infrastructure reused by P1/P2/P3 front-end features in the current compiler.
+- **Partial/Deferred:** Full kind system, higher-kinded polymorphism, and broader advanced inference strategies remain out of scope for this document’s phase.
+
 ## Design Decisions
 
 ### Type Representation

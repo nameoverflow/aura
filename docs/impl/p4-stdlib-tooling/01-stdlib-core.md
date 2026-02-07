@@ -11,6 +11,13 @@ The standard library provides the fundamental types, concepts, and collection op
 - **P2-03: Error Handling** — ConstraintError, From/Into
 - **P3-03: Async Concurrency** — async runtime types
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Not Started (P4 scope):** Full standard-library module implementation has not begun.
+- **Available today (prelude/runtime subset):** Core built-in types plus basic I/O builtins (`print`, `println`) are available via compiler/runtime plumbing.
+- **Available today (type-level helper):** `Runtime.block_on` is recognized by the typechecker as part of current P3 async boundary support.
+- **Deferred:** Rich collection APIs, canonical prelude packaging, and full concept-backed stdlib surface remain future work.
+
 ## Design Decisions
 
 ### Prelude (Auto-Imported)

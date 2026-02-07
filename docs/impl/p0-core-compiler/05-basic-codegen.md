@@ -8,6 +8,13 @@ Aura targets LLVM directly — there is no interpreter. The code generator trans
 
 - **P0-04: Basic Types** — type-checked AST
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented:** LLVM codegen for P0 execution path (functions, arithmetic, branching, loops, structs, sum-type basics, calls, print/println), with object emission and native linking.
+- **Implemented:** End-to-end compile-and-run coverage through E2E fixtures for the current P0-supported subset.
+- **Implemented:** Deferred-expression safeguards now return explicit compile errors instead of silently emitting invalid IR.
+- **Partial/Deferred:** Advanced lowering/codegen paths (closures, full method dispatch, async runtime lowering, richer collections/pattern forms) remain deferred to later tiers.
+
 ## Design Decisions
 
 ### Why LLVM First (No Interpreter)

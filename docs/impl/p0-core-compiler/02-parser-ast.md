@@ -8,6 +8,13 @@ The parser consumes the token stream from the lexer and produces an Abstract Syn
 
 - **P0-01: Lexer** — token stream input
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented:** Pratt-style expression parsing and AST construction with source spans across core syntax (functions, control flow, types, patterns, structs, sum types, and pipelines).
+- **Implemented:** Parser support for P1/P2 surface syntax already landed (concepts, instances, type annotations, effects, contracts, `with`, `?`, lambdas).
+- **Implemented (P3 front-end):** `async def` parsing plus concurrency expressions (`parallel`, `race`, `timeout`) with dedicated AST nodes.
+- **Partial/Deferred:** Some parsed constructs are intentionally ahead of backend support and still lower to “not supported yet” in codegen.
+
 ## Design Decisions
 
 ### Parser Type

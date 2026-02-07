@@ -8,6 +8,13 @@ The lexer (tokenizer) converts raw Aura source text into a stream of tokens. Thi
 
 None. This is the entry point.
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented:** Full tokenization for Aura keywords, identifiers, operators, delimiters, comments/doc comments, numeric literals (including hex), and string literals.
+- **Implemented:** String interpolation lexing with fragment tokens and escaped braces (`{{`, `}}`), plus dedicated tokens for interpolation boundaries.
+- **Implemented:** Keywords added for newer features (`async`, `parallel`, `race`, `timeout`, `yield`) and covered by lexer tests.
+- **Partial/Deferred:** Optional extensions from open questions (for example raw string variants) remain deferred.
+
 ## Design Decisions
 
 ### Token Categories

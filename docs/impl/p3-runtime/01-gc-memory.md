@@ -9,6 +9,13 @@ Aura uses a **mark-sweep garbage collector (GC)** for automatic memory managemen
 - **P0-05: Basic Codegen** — the LLVM backend needs GC allocation calls
 - **P1-01: Algebraic Types** — object layout for heap-allocated types
 
+## Current Implementation Status (as of February 7, 2026)
+
+- **Implemented:** New runtime crate (`aura_rt`) includes a stop-the-world mark-sweep collector with object headers, heap object list tracking, and adaptive threshold-triggered collection.
+- **Implemented:** Shadow stack frame API (`aura_gc_push_frame`/`aura_gc_pop_frame`) and explicit collection entrypoints (`aura_gc_collect`, `aura_runtime_gc`).
+- **Implemented:** Runtime GC tests cover unreachable collection, rooted reachability, and cycle collection behavior.
+- **Partial/Deferred:** Compiler/codegen does not yet emit GC-managed allocations, type descriptors, or safepoints/statepoints for compiled Aura programs.
+
 ## Design Decisions
 
 ### Why Mark-Sweep (Not ARC)
