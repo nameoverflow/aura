@@ -1,5 +1,5 @@
 pub mod resolve;
 pub mod scope;
 
-pub use resolve::{Resolver, ResolveError, ResolvedModule, DefId, DefKind};
+pub use resolve::{DefId, DefKind, ResolveError, ResolvedModule, Resolver};
 pub use scope::Scope;

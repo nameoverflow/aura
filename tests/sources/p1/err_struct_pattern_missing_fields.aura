@@ -1,0 +1,6 @@
+type User = { name: String, age: Int }
+
+def broken(u: User) -> String =
+  match u {
+    User { name } => name
+  }

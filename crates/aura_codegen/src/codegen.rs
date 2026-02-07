@@ -8,8 +8,10 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::types::{AnyType, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType};
-use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue};
-use inkwell::{AddressSpace, IntPredicate, FloatPredicate, OptimizationLevel};
+use inkwell::values::{
+    BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue,
+};
+use inkwell::{AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel};
 
 use aura_parser::ast;
 use aura_types::types::Type;
@@ -90,7 +92,10 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn declare_strcmp(&mut self) {
         let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let strcmp_type = self.context.i32_type().fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
+        let strcmp_type = self
+            .context
+            .i32_type()
+            .fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
         let strcmp = self.module.add_function("strcmp", strcmp_type, None);
         self.functions.insert("strcmp".into(), strcmp);
     }
@@ -124,17 +129,22 @@ impl<'ctx> CodeGen<'ctx> {
         match &td.kind {
             ast::TypeDefKind::Struct(fields) => {
                 let field_names: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
-                let field_types: Vec<Type> = fields.iter().map(|f| self.type_expr_to_type(&f.ty)).collect();
-                let llvm_field_types: Vec<BasicTypeEnum<'ctx>> = field_types.iter()
-                    .map(|t| self.type_to_llvm(t))
+                let field_types: Vec<Type> = fields
+                    .iter()
+                    .map(|f| self.type_expr_to_type(&f.ty))
                     .collect();
+                let llvm_field_types: Vec<BasicTypeEnum<'ctx>> =
+                    field_types.iter().map(|t| self.type_to_llvm(t)).collect();
 
                 let struct_type = self.context.struct_type(&llvm_field_types, false);
-                self.struct_types.insert(td.name.clone(), StructInfo {
-                    llvm_type: struct_type,
-                    field_names,
-                    field_types,
-                });
+                self.struct_types.insert(
+                    td.name.clone(),
+                    StructInfo {
+                        llvm_type: struct_type,
+                        field_names,
+                        field_types,
+                    },
+                );
             }
             ast::TypeDefKind::Sum(variants) => {
                 // Build tagged union: { i64 tag, payload... }
@@ -144,24 +154,28 @@ impl<'ctx> CodeGen<'ctx> {
                 let mut variant_map: HashMap<String, (u64, Vec<Type>)> = HashMap::new();
 
                 for (i, variant) in variants.iter().enumerate() {
-                    let payload_types: Vec<Type> = variant.fields.iter()
+                    let payload_types: Vec<Type> = variant
+                        .fields
+                        .iter()
                         .map(|f| self.type_expr_to_type(f))
                         .collect();
 
-                    let payload_llvm: Vec<BasicTypeEnum<'ctx>> = payload_types.iter()
-                        .map(|t| self.type_to_llvm(t))
-                        .collect();
+                    let payload_llvm: Vec<BasicTypeEnum<'ctx>> =
+                        payload_types.iter().map(|t| self.type_to_llvm(t)).collect();
 
                     // Track the variant with the most payload fields
                     if payload_llvm.len() > max_payload_fields.len() {
                         max_payload_fields = payload_llvm;
                     }
 
-                    self.variant_info.insert(variant.name.clone(), VariantInfo {
-                        parent_type: td.name.clone(),
-                        tag: i as u64,
-                        payload_types: payload_types.clone(),
-                    });
+                    self.variant_info.insert(
+                        variant.name.clone(),
+                        VariantInfo {
+                            parent_type: td.name.clone(),
+                            tag: i as u64,
+                            payload_types: payload_types.clone(),
+                        },
+                    );
 
                     variant_map.insert(variant.name.clone(), (i as u64, payload_types));
                 }
@@ -176,22 +190,29 @@ impl<'ctx> CodeGen<'ctx> {
 
                 let sum_llvm_type = self.context.struct_type(&fields, false);
 
-                self.sum_types.insert(td.name.clone(), SumTypeInfo {
-                    llvm_type: sum_llvm_type,
-                    variants: variant_map,
-                    name: td.name.clone(),
-                });
+                self.sum_types.insert(
+                    td.name.clone(),
+                    SumTypeInfo {
+                        llvm_type: sum_llvm_type,
+                        variants: variant_map,
+                        name: td.name.clone(),
+                    },
+                );
             }
             _ => {}
         }
     }
 
     fn declare_function(&mut self, f: &ast::FnDef) -> Result<FunctionValue<'ctx>, String> {
-        let param_types: Vec<BasicMetadataTypeEnum<'ctx>> = f.params.iter().map(|p| {
-            self.type_to_llvm_meta(&self.resolve_param_type(p))
-        }).collect();
+        let param_types: Vec<BasicMetadataTypeEnum<'ctx>> = f
+            .params
+            .iter()
+            .map(|p| self.type_to_llvm_meta(&self.resolve_param_type(p)))
+            .collect();
 
-        let ret_type = f.return_type.as_ref()
+        let ret_type = f
+            .return_type
+            .as_ref()
             .map(|t| self.type_expr_to_type(t))
             .unwrap_or(Type::Unit);
 
@@ -209,7 +230,9 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn compile_function(&mut self, f: &ast::FnDef) -> Result<(), String> {
-        let function = *self.functions.get(&f.name)
+        let function = *self
+            .functions
+            .get(&f.name)
             .ok_or_else(|| format!("function '{}' not declared", f.name))?;
 
         self.current_function = Some(function);
@@ -222,14 +245,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Bind parameters
         for (i, param) in f.params.iter().enumerate() {
-            let arg = function.get_nth_param(i as u32)
+            let arg = function
+                .get_nth_param(i as u32)
                 .ok_or_else(|| format!("missing param {i}"))?;
 
-            let alloca = self.create_entry_alloca(
-                function,
-                &param.name,
-                arg.get_type(),
-            );
+            let alloca = self.create_entry_alloca(function, &param.name, arg.get_type());
             self.builder.build_store(alloca, arg).unwrap();
             self.variables.insert(param.name.clone(), alloca);
         }
@@ -237,7 +257,9 @@ impl<'ctx> CodeGen<'ctx> {
         // Compile body
         let result = self.compile_expr(&f.body)?;
 
-        let ret_type = f.return_type.as_ref()
+        let ret_type = f
+            .return_type
+            .as_ref()
             .map(|t| self.type_expr_to_type(t))
             .unwrap_or(Type::Unit);
 
@@ -259,22 +281,18 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn compile_expr(&mut self, expr: &ast::Expr) -> Result<Option<BasicValueEnum<'ctx>>, String> {
         match expr {
-            ast::Expr::IntLit(n, _) => {
-                Ok(Some(self.context.i64_type().const_int(*n as u64, true).into()))
-            }
-            ast::Expr::FloatLit(n, _) => {
-                Ok(Some(self.context.f64_type().const_float(*n).into()))
-            }
-            ast::Expr::BoolLit(b, _) => {
-                Ok(Some(self.context.bool_type().const_int(*b as u64, false).into()))
-            }
+            ast::Expr::IntLit(n, _) => Ok(Some(
+                self.context.i64_type().const_int(*n as u64, true).into(),
+            )),
+            ast::Expr::FloatLit(n, _) => Ok(Some(self.context.f64_type().const_float(*n).into())),
+            ast::Expr::BoolLit(b, _) => Ok(Some(
+                self.context.bool_type().const_int(*b as u64, false).into(),
+            )),
             ast::Expr::StringLit(s, _) => {
                 let global = self.builder.build_global_string_ptr(s, "str").unwrap();
                 Ok(Some(global.as_pointer_value().into()))
             }
-            ast::Expr::Unit(_) => {
-                Ok(None)
-            }
+            ast::Expr::Unit(_) => Ok(None),
             ast::Expr::Ident(name, _) => {
                 if let Some(alloca) = self.variables.get(name) {
                     let val = self.builder.build_load(*alloca, name).unwrap();
@@ -290,23 +308,32 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             ast::Expr::Binary(lhs, op, rhs, _) => {
-                let lhs_val = self.compile_expr(lhs)?
+                let lhs_val = self
+                    .compile_expr(lhs)?
                     .ok_or("expected value on LHS of binary op")?;
-                let rhs_val = self.compile_expr(rhs)?
+                let rhs_val = self
+                    .compile_expr(rhs)?
                     .ok_or("expected value on RHS of binary op")?;
 
                 self.compile_binary_op(lhs_val, *op, rhs_val)
             }
             ast::Expr::Unary(op, inner, _) => {
-                let val = self.compile_expr(inner)?
+                let val = self
+                    .compile_expr(inner)?
                     .ok_or("expected value for unary op")?;
                 match op {
                     ast::UnaryOp::Neg => {
                         if val.is_int_value() {
-                            let neg = self.builder.build_int_neg(val.into_int_value(), "neg").unwrap();
+                            let neg = self
+                                .builder
+                                .build_int_neg(val.into_int_value(), "neg")
+                                .unwrap();
                             Ok(Some(neg.into()))
                         } else if val.is_float_value() {
-                            let neg = self.builder.build_float_neg(val.into_float_value(), "fneg").unwrap();
+                            let neg = self
+                                .builder
+                                .build_float_neg(val.into_float_value(), "fneg")
+                                .unwrap();
                             Ok(Some(neg.into()))
                         } else {
                             Err("cannot negate non-numeric value".into())
@@ -339,11 +366,17 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 Ok(None)
             }
+            ast::Expr::LetPattern(_, _, _, _, _) => {
+                Err("let-pattern codegen is not supported yet".into())
+            }
             ast::Expr::Assign(target, value, _) => {
                 if let ast::Expr::Ident(name, _) = target.as_ref() {
-                    let val = self.compile_expr(value)?
+                    let val = self
+                        .compile_expr(value)?
                         .ok_or("expected value for assignment")?;
-                    let alloca = self.variables.get(name)
+                    let alloca = self
+                        .variables
+                        .get(name)
                         .ok_or_else(|| format!("undefined variable '{name}'"))?;
                     self.builder.build_store(*alloca, val).unwrap();
                     Ok(None)
@@ -373,21 +406,16 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 self.compile_call(callee, args)
             }
-            ast::Expr::While(cond, body, _) => {
-                self.compile_while(cond, body)
-            }
-            ast::Expr::For(var, iter, body, _) => {
-                self.compile_for(var, iter, body)
+            ast::Expr::While(cond, body, _) => self.compile_while(cond, body),
+            ast::Expr::For(var, iter, body, _) => self.compile_for(var, iter, body),
+            ast::Expr::ForPattern(_, _, _, _) => {
+                Err("for-pattern codegen is not supported yet".into())
             }
             ast::Expr::FieldAccess(receiver, field_name, _) => {
                 self.compile_field_access(receiver, field_name)
             }
-            ast::Expr::StructLit(name, fields, _) => {
-                self.compile_struct_lit(name, fields)
-            }
-            ast::Expr::Match(scrutinee, arms, _) => {
-                self.compile_match(scrutinee, arms)
-            }
+            ast::Expr::StructLit(name, fields, _) => self.compile_struct_lit(name, fields),
+            ast::Expr::Match(scrutinee, arms, _) => self.compile_match(scrutinee, arms),
             ast::Expr::StringInterp(parts, _) => {
                 // For P0: concatenate parts via printf-style formatting
                 // Simple approach: just format the string with printf
@@ -415,7 +443,10 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                     }
                 }
-                let global = self.builder.build_global_string_ptr(&fmt, "interp_fmt").unwrap();
+                let global = self
+                    .builder
+                    .build_global_string_ptr(&fmt, "interp_fmt")
+                    .unwrap();
                 Ok(Some(global.as_pointer_value().into()))
             }
             ast::Expr::Pipeline(lhs, rhs, _) => {
@@ -437,10 +468,14 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 Ok(None)
             }
-            ast::Expr::ListLit(_, _) | ast::Expr::TupleLit(_, _) |
-            ast::Expr::Lambda(_, _, _, _) | ast::Expr::With(_, _, _) |
-            ast::Expr::Try(_, _) | ast::Expr::Range(_, _, _, _) |
-            ast::Expr::MethodCall(_, _, _, _) | ast::Expr::QualifiedIdent(_, _, _) => {
+            ast::Expr::ListLit(_, _)
+            | ast::Expr::TupleLit(_, _)
+            | ast::Expr::Lambda(_, _, _, _)
+            | ast::Expr::With(_, _, _)
+            | ast::Expr::Try(_, _)
+            | ast::Expr::Range(_, _, _, _)
+            | ast::Expr::MethodCall(_, _, _, _)
+            | ast::Expr::QualifiedIdent(_, _, _) => {
                 // These features are deferred to later tiers
                 Ok(None)
             }
@@ -463,13 +498,39 @@ impl<'ctx> CodeGen<'ctx> {
                 ast::BinOp::Mul => self.builder.build_float_mul(l, r, "fmul").unwrap().into(),
                 ast::BinOp::Div => self.builder.build_float_div(l, r, "fdiv").unwrap().into(),
                 ast::BinOp::Mod => self.builder.build_float_rem(l, r, "frem").unwrap().into(),
-                ast::BinOp::Lt => self.builder.build_float_compare(FloatPredicate::OLT, l, r, "flt").unwrap().into(),
-                ast::BinOp::Gt => self.builder.build_float_compare(FloatPredicate::OGT, l, r, "fgt").unwrap().into(),
-                ast::BinOp::LtEq => self.builder.build_float_compare(FloatPredicate::OLE, l, r, "fle").unwrap().into(),
-                ast::BinOp::GtEq => self.builder.build_float_compare(FloatPredicate::OGE, l, r, "fge").unwrap().into(),
-                ast::BinOp::Eq => self.builder.build_float_compare(FloatPredicate::OEQ, l, r, "feq").unwrap().into(),
-                ast::BinOp::NotEq => self.builder.build_float_compare(FloatPredicate::ONE, l, r, "fne").unwrap().into(),
-                ast::BinOp::And | ast::BinOp::Or => return Err("logical ops not supported on floats".into()),
+                ast::BinOp::Lt => self
+                    .builder
+                    .build_float_compare(FloatPredicate::OLT, l, r, "flt")
+                    .unwrap()
+                    .into(),
+                ast::BinOp::Gt => self
+                    .builder
+                    .build_float_compare(FloatPredicate::OGT, l, r, "fgt")
+                    .unwrap()
+                    .into(),
+                ast::BinOp::LtEq => self
+                    .builder
+                    .build_float_compare(FloatPredicate::OLE, l, r, "fle")
+                    .unwrap()
+                    .into(),
+                ast::BinOp::GtEq => self
+                    .builder
+                    .build_float_compare(FloatPredicate::OGE, l, r, "fge")
+                    .unwrap()
+                    .into(),
+                ast::BinOp::Eq => self
+                    .builder
+                    .build_float_compare(FloatPredicate::OEQ, l, r, "feq")
+                    .unwrap()
+                    .into(),
+                ast::BinOp::NotEq => self
+                    .builder
+                    .build_float_compare(FloatPredicate::ONE, l, r, "fne")
+                    .unwrap()
+                    .into(),
+                ast::BinOp::And | ast::BinOp::Or => {
+                    return Err("logical ops not supported on floats".into())
+                }
             };
             return Ok(Some(result));
         }
@@ -481,14 +542,46 @@ impl<'ctx> CodeGen<'ctx> {
             ast::BinOp::Add => self.builder.build_int_add(l, r, "add").unwrap().into(),
             ast::BinOp::Sub => self.builder.build_int_sub(l, r, "sub").unwrap().into(),
             ast::BinOp::Mul => self.builder.build_int_mul(l, r, "mul").unwrap().into(),
-            ast::BinOp::Div => self.builder.build_int_signed_div(l, r, "div").unwrap().into(),
-            ast::BinOp::Mod => self.builder.build_int_signed_rem(l, r, "mod").unwrap().into(),
-            ast::BinOp::Eq => self.builder.build_int_compare(IntPredicate::EQ, l, r, "eq").unwrap().into(),
-            ast::BinOp::NotEq => self.builder.build_int_compare(IntPredicate::NE, l, r, "ne").unwrap().into(),
-            ast::BinOp::Lt => self.builder.build_int_compare(IntPredicate::SLT, l, r, "lt").unwrap().into(),
-            ast::BinOp::Gt => self.builder.build_int_compare(IntPredicate::SGT, l, r, "gt").unwrap().into(),
-            ast::BinOp::LtEq => self.builder.build_int_compare(IntPredicate::SLE, l, r, "le").unwrap().into(),
-            ast::BinOp::GtEq => self.builder.build_int_compare(IntPredicate::SGE, l, r, "ge").unwrap().into(),
+            ast::BinOp::Div => self
+                .builder
+                .build_int_signed_div(l, r, "div")
+                .unwrap()
+                .into(),
+            ast::BinOp::Mod => self
+                .builder
+                .build_int_signed_rem(l, r, "mod")
+                .unwrap()
+                .into(),
+            ast::BinOp::Eq => self
+                .builder
+                .build_int_compare(IntPredicate::EQ, l, r, "eq")
+                .unwrap()
+                .into(),
+            ast::BinOp::NotEq => self
+                .builder
+                .build_int_compare(IntPredicate::NE, l, r, "ne")
+                .unwrap()
+                .into(),
+            ast::BinOp::Lt => self
+                .builder
+                .build_int_compare(IntPredicate::SLT, l, r, "lt")
+                .unwrap()
+                .into(),
+            ast::BinOp::Gt => self
+                .builder
+                .build_int_compare(IntPredicate::SGT, l, r, "gt")
+                .unwrap()
+                .into(),
+            ast::BinOp::LtEq => self
+                .builder
+                .build_int_compare(IntPredicate::SLE, l, r, "le")
+                .unwrap()
+                .into(),
+            ast::BinOp::GtEq => self
+                .builder
+                .build_int_compare(IntPredicate::SGE, l, r, "ge")
+                .unwrap()
+                .into(),
             ast::BinOp::And => self.builder.build_and(l, r, "and").unwrap().into(),
             ast::BinOp::Or => self.builder.build_or(l, r, "or").unwrap().into(),
         };
@@ -501,20 +594,16 @@ impl<'ctx> CodeGen<'ctx> {
         then_branch: &ast::Expr,
         else_branch: Option<&ast::Expr>,
     ) -> Result<Option<BasicValueEnum<'ctx>>, String> {
-        let cond_val = self.compile_expr(cond)?
-            .ok_or("expected condition value")?;
+        let cond_val = self.compile_expr(cond)?.ok_or("expected condition value")?;
 
         let cond_bool = if cond_val.is_int_value() {
             let iv = cond_val.into_int_value();
             if iv.get_type().get_bit_width() == 1 {
                 iv
             } else {
-                self.builder.build_int_compare(
-                    IntPredicate::NE,
-                    iv,
-                    iv.get_type().const_zero(),
-                    "ifcond",
-                ).unwrap()
+                self.builder
+                    .build_int_compare(IntPredicate::NE, iv, iv.get_type().const_zero(), "ifcond")
+                    .unwrap()
             }
         } else {
             return Err("condition must be boolean".into());
@@ -525,7 +614,9 @@ impl<'ctx> CodeGen<'ctx> {
         let else_bb = self.context.append_basic_block(function, "else");
         let merge_bb = self.context.append_basic_block(function, "ifmerge");
 
-        self.builder.build_conditional_branch(cond_bool, then_bb, else_bb).unwrap();
+        self.builder
+            .build_conditional_branch(cond_bool, then_bb, else_bb)
+            .unwrap();
 
         // Then block
         self.builder.position_at_end(then_bb);
@@ -553,7 +644,10 @@ impl<'ctx> CodeGen<'ctx> {
         // If both branches produce values of the same type, create a PHI
         if let (Some(then_v), Some(else_v)) = (then_val, else_val) {
             if then_v.get_type() == else_v.get_type() {
-                let phi = self.builder.build_phi(then_v.get_type(), "ifresult").unwrap();
+                let phi = self
+                    .builder
+                    .build_phi(then_v.get_type(), "ifresult")
+                    .unwrap();
                 phi.add_incoming(&[(&then_v, then_end_bb), (&else_v, else_end_bb)]);
                 return Ok(Some(phi.as_basic_value()));
             }
@@ -579,17 +673,19 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return Err("complex callees not yet supported in P0".into()),
         };
 
-        let function = *self.functions.get(&callee_name)
+        let function = *self
+            .functions
+            .get(&callee_name)
             .ok_or_else(|| format!("undefined function '{callee_name}'"))?;
 
         let mut compiled_args: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
         for arg in args {
-            let val = self.compile_expr(arg)?
-                .ok_or("expected argument value")?;
+            let val = self.compile_expr(arg)?.ok_or("expected argument value")?;
             compiled_args.push(val.into());
         }
 
-        let call = self.builder
+        let call = self
+            .builder
             .build_call(function, &compiled_args, &callee_name)
             .unwrap();
 
@@ -604,29 +700,46 @@ impl<'ctx> CodeGen<'ctx> {
         let printf = *self.functions.get("printf").unwrap();
 
         for (i, arg) in args.iter().enumerate() {
-            let val = self.compile_expr(arg)?
-                .ok_or("expected print argument")?;
+            let val = self.compile_expr(arg)?.ok_or("expected print argument")?;
 
             // Choose format string based on type
             let fmt = if val.is_int_value() {
                 let int_val = val.into_int_value();
                 if int_val.get_type().get_bit_width() == 1 {
                     // Bool: print "true" or "false"
-                    let true_str = self.builder.build_global_string_ptr("true", "true_str").unwrap();
-                    let false_str = self.builder.build_global_string_ptr("false", "false_str").unwrap();
-                    let selected = self.builder.build_select(
-                        int_val,
-                        true_str.as_pointer_value(),
-                        false_str.as_pointer_value(),
-                        "bool_str",
-                    ).unwrap();
+                    let true_str = self
+                        .builder
+                        .build_global_string_ptr("true", "true_str")
+                        .unwrap();
+                    let false_str = self
+                        .builder
+                        .build_global_string_ptr("false", "false_str")
+                        .unwrap();
+                    let selected = self
+                        .builder
+                        .build_select(
+                            int_val,
+                            true_str.as_pointer_value(),
+                            false_str.as_pointer_value(),
+                            "bool_str",
+                        )
+                        .unwrap();
                     let fmt_str = if kind == "println" && i == args.len() - 1 {
                         "%s\n"
                     } else {
                         "%s"
                     };
-                    let fmt_ptr = self.builder.build_global_string_ptr(fmt_str, "fmt").unwrap();
-                    self.builder.build_call(printf, &[fmt_ptr.as_pointer_value().into(), selected.into()], "printf_call").unwrap();
+                    let fmt_ptr = self
+                        .builder
+                        .build_global_string_ptr(fmt_str, "fmt")
+                        .unwrap();
+                    self.builder
+                        .build_call(
+                            printf,
+                            &[fmt_ptr.as_pointer_value().into(), selected.into()],
+                            "printf_call",
+                        )
+                        .unwrap();
                     continue;
                 } else {
                     if kind == "println" && i == args.len() - 1 {
@@ -651,17 +764,24 @@ impl<'ctx> CodeGen<'ctx> {
             };
 
             let fmt_ptr = self.builder.build_global_string_ptr(fmt, "fmt").unwrap();
-            self.builder.build_call(
-                printf,
-                &[fmt_ptr.as_pointer_value().into(), val.into()],
-                "printf_call",
-            ).unwrap();
+            self.builder
+                .build_call(
+                    printf,
+                    &[fmt_ptr.as_pointer_value().into(), val.into()],
+                    "printf_call",
+                )
+                .unwrap();
         }
 
         // If no args, just print newline for println
         if args.is_empty() && kind == "println" {
-            let fmt_ptr = self.builder.build_global_string_ptr("\n", "newline").unwrap();
-            self.builder.build_call(printf, &[fmt_ptr.as_pointer_value().into()], "printf_call").unwrap();
+            let fmt_ptr = self
+                .builder
+                .build_global_string_ptr("\n", "newline")
+                .unwrap();
+            self.builder
+                .build_call(printf, &[fmt_ptr.as_pointer_value().into()], "printf_call")
+                .unwrap();
         }
 
         Ok(None)
@@ -685,10 +805,13 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Condition
         self.builder.position_at_end(cond_bb);
-        let cond_val = self.compile_expr(cond)?
+        let cond_val = self
+            .compile_expr(cond)?
             .ok_or("expected condition value")?
             .into_int_value();
-        self.builder.build_conditional_branch(cond_val, body_bb, end_bb).unwrap();
+        self.builder
+            .build_conditional_branch(cond_val, body_bb, end_bb)
+            .unwrap();
 
         // Body
         self.builder.position_at_end(body_bb);
@@ -716,10 +839,12 @@ impl<'ctx> CodeGen<'ctx> {
         // For P0, only support integer ranges: for i in start..end
         let (start, end) = match iter_expr {
             ast::Expr::Range(s, e, _inclusive, _) => {
-                let start_val = self.compile_expr(s)?
+                let start_val = self
+                    .compile_expr(s)?
                     .ok_or("expected range start value")?
                     .into_int_value();
-                let end_val = self.compile_expr(e)?
+                let end_val = self
+                    .compile_expr(e)?
                     .ok_or("expected range end value")?
                     .into_int_value();
                 (start_val, end_val)
@@ -748,9 +873,18 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Condition: i < end
         self.builder.position_at_end(cond_bb);
-        let current = self.builder.build_load(alloca, var).unwrap().into_int_value();
-        let cmp = self.builder.build_int_compare(IntPredicate::SLT, current, end, "for_cond").unwrap();
-        self.builder.build_conditional_branch(cmp, body_bb, end_bb).unwrap();
+        let current = self
+            .builder
+            .build_load(alloca, var)
+            .unwrap()
+            .into_int_value();
+        let cmp = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, current, end, "for_cond")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(cmp, body_bb, end_bb)
+            .unwrap();
 
         // Body
         self.builder.position_at_end(body_bb);
@@ -762,8 +896,15 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Increment
         self.builder.position_at_end(inc_bb);
-        let current = self.builder.build_load(alloca, var).unwrap().into_int_value();
-        let next = self.builder.build_int_add(current, i64_type.const_int(1, false), "inc").unwrap();
+        let current = self
+            .builder
+            .build_load(alloca, var)
+            .unwrap()
+            .into_int_value();
+        let next = self
+            .builder
+            .build_int_add(current, i64_type.const_int(1, false), "inc")
+            .unwrap();
         self.builder.build_store(alloca, next).unwrap();
         self.builder.build_unconditional_branch(cond_bb).unwrap();
 
@@ -781,7 +922,9 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
         fields: &[(String, ast::Expr)],
     ) -> Result<Option<BasicValueEnum<'ctx>>, String> {
-        let struct_info = self.struct_types.get(name)
+        let struct_info = self
+            .struct_types
+            .get(name)
             .ok_or_else(|| format!("undefined struct type '{name}'"))?;
         let struct_type = struct_info.llvm_type;
         let field_names = struct_info.field_names.clone();
@@ -791,12 +934,16 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Store each field value
         for (fname, fexpr) in fields {
-            let idx = field_names.iter().position(|n| n == fname)
+            let idx = field_names
+                .iter()
+                .position(|n| n == fname)
                 .ok_or_else(|| format!("struct '{name}' has no field '{fname}'"))?;
-            let val = self.compile_expr(fexpr)?
+            let val = self
+                .compile_expr(fexpr)?
                 .ok_or_else(|| format!("expected value for field '{fname}'"))?;
 
-            let field_ptr = self.builder
+            let field_ptr = self
+                .builder
                 .build_struct_gep(alloca, idx as u32, &format!("{name}.{fname}.ptr"))
                 .unwrap();
             self.builder.build_store(field_ptr, val).unwrap();
@@ -811,7 +958,8 @@ impl<'ctx> CodeGen<'ctx> {
         receiver: &ast::Expr,
         field_name: &str,
     ) -> Result<Option<BasicValueEnum<'ctx>>, String> {
-        let recv_val = self.compile_expr(receiver)?
+        let recv_val = self
+            .compile_expr(receiver)?
             .ok_or("expected struct value for field access")?;
 
         // We need the struct type name to look up field index.
@@ -820,14 +968,18 @@ impl<'ctx> CodeGen<'ctx> {
 
         if let Some(sname) = struct_name {
             if let Some(info) = self.struct_types.get(&sname) {
-                let idx = info.field_names.iter().position(|n| n == field_name)
+                let idx = info
+                    .field_names
+                    .iter()
+                    .position(|n| n == field_name)
                     .ok_or_else(|| format!("struct '{sname}' has no field '{field_name}'"))?;
 
                 let function = self.current_function.unwrap();
                 let alloca = self.create_entry_alloca(function, "recv_tmp", recv_val.get_type());
                 self.builder.build_store(alloca, recv_val).unwrap();
 
-                let field_ptr = self.builder
+                let field_ptr = self
+                    .builder
                     .build_struct_gep(alloca, idx as u32, &format!("{sname}.{field_name}.ptr"))
                     .unwrap();
                 let val = self.builder.build_load(field_ptr, field_name).unwrap();
@@ -836,7 +988,9 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Fallback: can't determine struct type
-        Err(format!("cannot determine struct type for field access '.{field_name}'"))
+        Err(format!(
+            "cannot determine struct type for field access '.{field_name}'"
+        ))
     }
 
     fn find_struct_type_name(&self, expr: &ast::Expr) -> Option<String> {
@@ -873,12 +1027,16 @@ impl<'ctx> CodeGen<'ctx> {
         variant_name: &str,
         _args: &[ast::Expr],
     ) -> Result<Option<BasicValueEnum<'ctx>>, String> {
-        let vinfo = self.variant_info.get(variant_name)
+        let vinfo = self
+            .variant_info
+            .get(variant_name)
             .ok_or_else(|| format!("unknown variant '{variant_name}'"))?;
         let parent = vinfo.parent_type.clone();
         let tag = vinfo.tag;
 
-        let sum_info = self.sum_types.get(&parent)
+        let sum_info = self
+            .sum_types
+            .get(&parent)
             .ok_or_else(|| format!("unknown sum type '{parent}'"))?;
         let sum_type = sum_info.llvm_type;
 
@@ -886,9 +1044,7 @@ impl<'ctx> CodeGen<'ctx> {
         let alloca = self.create_entry_alloca(function, "variant_tmp", sum_type.into());
 
         // Store tag
-        let tag_ptr = self.builder
-            .build_struct_gep(alloca, 0, "tag_ptr")
-            .unwrap();
+        let tag_ptr = self.builder.build_struct_gep(alloca, 0, "tag_ptr").unwrap();
         let tag_val = self.context.i64_type().const_int(tag, false);
         self.builder.build_store(tag_ptr, tag_val).unwrap();
 
@@ -902,12 +1058,16 @@ impl<'ctx> CodeGen<'ctx> {
         variant_name: &str,
         args: &[ast::Expr],
     ) -> Result<Option<BasicValueEnum<'ctx>>, String> {
-        let vinfo = self.variant_info.get(variant_name)
+        let vinfo = self
+            .variant_info
+            .get(variant_name)
             .ok_or_else(|| format!("unknown variant '{variant_name}'"))?;
         let parent = vinfo.parent_type.clone();
         let tag = vinfo.tag;
 
-        let sum_info = self.sum_types.get(&parent)
+        let sum_info = self
+            .sum_types
+            .get(&parent)
             .ok_or_else(|| format!("unknown sum type '{parent}'"))?;
         let sum_type = sum_info.llvm_type;
 
@@ -915,18 +1075,22 @@ impl<'ctx> CodeGen<'ctx> {
         let alloca = self.create_entry_alloca(function, "variant_tmp", sum_type.into());
 
         // Store tag
-        let tag_ptr = self.builder
-            .build_struct_gep(alloca, 0, "tag_ptr")
-            .unwrap();
+        let tag_ptr = self.builder.build_struct_gep(alloca, 0, "tag_ptr").unwrap();
         let tag_val = self.context.i64_type().const_int(tag, false);
         self.builder.build_store(tag_ptr, tag_val).unwrap();
 
         // Store payload fields (starting at struct index 1)
         for (i, arg) in args.iter().enumerate() {
-            let val = self.compile_expr(arg)?
+            let val = self
+                .compile_expr(arg)?
                 .ok_or_else(|| format!("expected value for variant payload field {i}"))?;
-            let field_ptr = self.builder
-                .build_struct_gep(alloca, (i + 1) as u32, &format!("{variant_name}.payload.{i}"))
+            let field_ptr = self
+                .builder
+                .build_struct_gep(
+                    alloca,
+                    (i + 1) as u32,
+                    &format!("{variant_name}.payload.{i}"),
+                )
                 .unwrap();
             self.builder.build_store(field_ptr, val).unwrap();
         }
@@ -951,7 +1115,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Chain of if-else for literal/wildcard/constructor patterns with guard support
-        let mut incoming: Vec<(BasicValueEnum<'ctx>, inkwell::basic_block::BasicBlock<'ctx>)> = Vec::new();
+        let mut incoming: Vec<(BasicValueEnum<'ctx>, inkwell::basic_block::BasicBlock<'ctx>)> =
+            Vec::new();
 
         for (i, arm) in arms.iter().enumerate() {
             let is_last = i == arms.len() - 1;
@@ -976,11 +1141,14 @@ impl<'ctx> CodeGen<'ctx> {
 
                     // Check guard if present
                     if let Some(guard) = &arm.guard {
-                        let guard_val = self.compile_expr(guard)?
+                        let guard_val = self
+                            .compile_expr(guard)?
                             .ok_or("expected guard value")?
                             .into_int_value();
                         let arm_bb = self.context.append_basic_block(function, "match_arm");
-                        self.builder.build_conditional_branch(guard_val, arm_bb, next_bb).unwrap();
+                        self.builder
+                            .build_conditional_branch(guard_val, arm_bb, next_bb)
+                            .unwrap();
                         self.builder.position_at_end(arm_bb);
                     }
 
@@ -1000,30 +1168,57 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
                 ast::Pattern::Literal(lit, _) => {
-                    let scrut = scrut_val.clone()
+                    let scrut = scrut_val
+                        .clone()
                         .ok_or("expected scrutinee value for literal pattern")?;
 
                     let cmp = match lit {
                         ast::LitPattern::Int(n) => {
                             let pat_val = self.context.i64_type().const_int(*n as u64, true);
-                            self.builder.build_int_compare(IntPredicate::EQ, scrut.into_int_value(), pat_val, "match_cmp").unwrap()
+                            self.builder
+                                .build_int_compare(
+                                    IntPredicate::EQ,
+                                    scrut.into_int_value(),
+                                    pat_val,
+                                    "match_cmp",
+                                )
+                                .unwrap()
                         }
                         ast::LitPattern::Bool(b) => {
                             let pat_val = self.context.bool_type().const_int(*b as u64, false);
-                            self.builder.build_int_compare(IntPredicate::EQ, scrut.into_int_value(), pat_val, "match_cmp").unwrap()
+                            self.builder
+                                .build_int_compare(
+                                    IntPredicate::EQ,
+                                    scrut.into_int_value(),
+                                    pat_val,
+                                    "match_cmp",
+                                )
+                                .unwrap()
                         }
                         ast::LitPattern::String(s) => {
                             // String comparison via strcmp
                             let strcmp = *self.functions.get("strcmp").unwrap();
-                            let pat_str = self.builder.build_global_string_ptr(s, "match_str_pat").unwrap();
-                            let cmp_result = self.builder.build_call(
-                                strcmp,
-                                &[scrut.into(), pat_str.as_pointer_value().into()],
-                                "strcmp_result",
-                            ).unwrap();
-                            let cmp_int = cmp_result.try_as_basic_value().left().unwrap().into_int_value();
+                            let pat_str = self
+                                .builder
+                                .build_global_string_ptr(s, "match_str_pat")
+                                .unwrap();
+                            let cmp_result = self
+                                .builder
+                                .build_call(
+                                    strcmp,
+                                    &[scrut.into(), pat_str.as_pointer_value().into()],
+                                    "strcmp_result",
+                                )
+                                .unwrap();
+                            let cmp_int = cmp_result
+                                .try_as_basic_value()
+                                .left()
+                                .unwrap()
+                                .into_int_value();
                             let zero = self.context.i32_type().const_int(0, false);
-                            self.builder.build_int_compare(IntPredicate::EQ, cmp_int, zero, "match_cmp").unwrap()
+                            self.builder
+                                .build_int_compare(IntPredicate::EQ, cmp_int, zero, "match_cmp")
+                                .unwrap()
                         }
                         ast::LitPattern::Float(_) => {
                             return Err("float patterns not supported in P0".into());
@@ -1031,17 +1226,22 @@ impl<'ctx> CodeGen<'ctx> {
                     };
 
                     let arm_bb = self.context.append_basic_block(function, "match_arm");
-                    self.builder.build_conditional_branch(cmp, arm_bb, next_bb).unwrap();
+                    self.builder
+                        .build_conditional_branch(cmp, arm_bb, next_bb)
+                        .unwrap();
 
                     self.builder.position_at_end(arm_bb);
 
                     // Check guard if present
                     if let Some(guard) = &arm.guard {
-                        let guard_val = self.compile_expr(guard)?
+                        let guard_val = self
+                            .compile_expr(guard)?
                             .ok_or("expected guard value")?
                             .into_int_value();
                         let guard_pass_bb = self.context.append_basic_block(function, "guard_pass");
-                        self.builder.build_conditional_branch(guard_val, guard_pass_bb, next_bb).unwrap();
+                        self.builder
+                            .build_conditional_branch(guard_val, guard_pass_bb, next_bb)
+                            .unwrap();
                         self.builder.position_at_end(guard_pass_bb);
                     }
 
@@ -1060,7 +1260,8 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 ast::Pattern::Constructor(ctor_name, sub_patterns, _) => {
                     // Match variant tag, then bind payload if patterns present
-                    let scrut = scrut_val.clone()
+                    let scrut = scrut_val
+                        .clone()
                         .ok_or("expected scrutinee value for constructor pattern")?;
 
                     if let Some(vinfo) = self.variant_info.get(ctor_name) {
@@ -1068,23 +1269,36 @@ impl<'ctx> CodeGen<'ctx> {
                         let tag = vinfo.tag;
                         let payload_types = vinfo.payload_types.clone();
 
-                        let sum_info = self.sum_types.get(&parent)
+                        let sum_info = self
+                            .sum_types
+                            .get(&parent)
                             .ok_or_else(|| format!("unknown sum type '{parent}'"))?;
                         let sum_llvm_type = sum_info.llvm_type;
 
-                        let scrut_alloca = self.create_entry_alloca(function, "scrut_tmp", sum_llvm_type.into());
+                        let scrut_alloca =
+                            self.create_entry_alloca(function, "scrut_tmp", sum_llvm_type.into());
                         self.builder.build_store(scrut_alloca, scrut).unwrap();
 
                         // Extract and compare tag
-                        let tag_ptr = self.builder
+                        let tag_ptr = self
+                            .builder
                             .build_struct_gep(scrut_alloca, 0, "tag_ptr")
                             .unwrap();
-                        let tag_val = self.builder.build_load(tag_ptr, "tag").unwrap().into_int_value();
+                        let tag_val = self
+                            .builder
+                            .build_load(tag_ptr, "tag")
+                            .unwrap()
+                            .into_int_value();
                         let expected_tag = self.context.i64_type().const_int(tag, false);
-                        let cmp = self.builder.build_int_compare(IntPredicate::EQ, tag_val, expected_tag, "match_cmp").unwrap();
+                        let cmp = self
+                            .builder
+                            .build_int_compare(IntPredicate::EQ, tag_val, expected_tag, "match_cmp")
+                            .unwrap();
 
                         let arm_bb = self.context.append_basic_block(function, "match_arm");
-                        self.builder.build_conditional_branch(cmp, arm_bb, next_bb).unwrap();
+                        self.builder
+                            .build_conditional_branch(cmp, arm_bb, next_bb)
+                            .unwrap();
 
                         self.builder.position_at_end(arm_bb);
 
@@ -1092,11 +1306,21 @@ impl<'ctx> CodeGen<'ctx> {
                         for (j, sub_pat) in sub_patterns.iter().enumerate() {
                             if let ast::Pattern::Ident(bind_name, _) = sub_pat {
                                 if j < payload_types.len() {
-                                    let field_ptr = self.builder
-                                        .build_struct_gep(scrut_alloca, (j + 1) as u32, &format!("{ctor_name}.payload.{j}"))
+                                    let field_ptr = self
+                                        .builder
+                                        .build_struct_gep(
+                                            scrut_alloca,
+                                            (j + 1) as u32,
+                                            &format!("{ctor_name}.payload.{j}"),
+                                        )
                                         .unwrap();
-                                    let field_val = self.builder.build_load(field_ptr, bind_name).unwrap();
-                                    let bind_alloca = self.create_entry_alloca(function, bind_name, field_val.get_type());
+                                    let field_val =
+                                        self.builder.build_load(field_ptr, bind_name).unwrap();
+                                    let bind_alloca = self.create_entry_alloca(
+                                        function,
+                                        bind_name,
+                                        field_val.get_type(),
+                                    );
                                     self.builder.build_store(bind_alloca, field_val).unwrap();
                                     self.variables.insert(bind_name.clone(), bind_alloca);
                                 }
@@ -1105,11 +1329,15 @@ impl<'ctx> CodeGen<'ctx> {
 
                         // Check guard if present
                         if let Some(guard) = &arm.guard {
-                            let guard_val = self.compile_expr(guard)?
+                            let guard_val = self
+                                .compile_expr(guard)?
                                 .ok_or("expected guard value")?
                                 .into_int_value();
-                            let guard_pass_bb = self.context.append_basic_block(function, "guard_pass");
-                            self.builder.build_conditional_branch(guard_val, guard_pass_bb, next_bb).unwrap();
+                            let guard_pass_bb =
+                                self.context.append_basic_block(function, "guard_pass");
+                            self.builder
+                                .build_conditional_branch(guard_val, guard_pass_bb, next_bb)
+                                .unwrap();
                             self.builder.position_at_end(guard_pass_bb);
                         }
 
@@ -1150,16 +1378,37 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     break;
                 }
+                ast::Pattern::Struct(_, _, _, _) | ast::Pattern::Or(_, _) => {
+                    // Struct and or-pattern codegen are deferred.
+                    let body_val = self.compile_expr(&arm.body)?;
+                    let current_bb = self.builder.get_insert_block().unwrap();
+                    if current_bb.get_terminator().is_none() {
+                        if let Some(v) = body_val {
+                            incoming.push((v, current_bb));
+                        }
+                        self.builder.build_unconditional_branch(merge_bb).unwrap();
+                    }
+                    break;
+                }
             }
         }
 
         self.builder.position_at_end(merge_bb);
 
         // Create PHI if we have consistent incoming values
-        if !incoming.is_empty() && incoming.iter().all(|(v, _)| v.get_type() == incoming[0].0.get_type()) {
-            let phi = self.builder.build_phi(incoming[0].0.get_type(), "match_result").unwrap();
-            let refs: Vec<(&dyn BasicValue, inkwell::basic_block::BasicBlock)> =
-                incoming.iter().map(|(v, bb)| (v as &dyn BasicValue, *bb)).collect();
+        if !incoming.is_empty()
+            && incoming
+                .iter()
+                .all(|(v, _)| v.get_type() == incoming[0].0.get_type())
+        {
+            let phi = self
+                .builder
+                .build_phi(incoming[0].0.get_type(), "match_result")
+                .unwrap();
+            let refs: Vec<(&dyn BasicValue, inkwell::basic_block::BasicBlock)> = incoming
+                .iter()
+                .map(|(v, bb)| (v as &dyn BasicValue, *bb))
+                .collect();
             phi.add_incoming(&refs.iter().map(|(v, bb)| (*v, *bb)).collect::<Vec<_>>());
             Ok(Some(phi.as_basic_value()))
         } else {
@@ -1213,6 +1462,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let pts: Vec<Type> = params.iter().map(|p| self.type_expr_to_type(p)).collect();
                 Type::Function(pts, Box::new(self.type_expr_to_type(ret)))
             }
+            ast::TypeExpr::Forall(_, body, _) => self.type_expr_to_type(body),
             ast::TypeExpr::Unit(_) => Type::Unit,
         }
     }
@@ -1231,7 +1481,11 @@ impl<'ctx> CodeGen<'ctx> {
             Type::Float64 | Type::Decimal | Type::BigDecimal => self.context.f64_type().into(),
             Type::Bool => self.context.bool_type().into(),
             Type::Char => self.context.i32_type().into(),
-            Type::String => self.context.i8_type().ptr_type(AddressSpace::default()).into(),
+            Type::String => self
+                .context
+                .i8_type()
+                .ptr_type(AddressSpace::default())
+                .into(),
             Type::Unit => self.context.i8_type().into(),
             Type::Named(name, _) => {
                 if let Some(info) = self.struct_types.get(name) {
@@ -1243,7 +1497,11 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             Type::Product(_) => self.context.i64_type().into(), // Placeholder
-            Type::Function(_, _) => self.context.i8_type().ptr_type(AddressSpace::default()).into(),
+            Type::Function(_, _) => self
+                .context
+                .i8_type()
+                .ptr_type(AddressSpace::default())
+                .into(),
             Type::Var(_) | Type::Error => self.context.i64_type().into(),
         }
     }
@@ -1259,8 +1517,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub fn write_object_file(&self, path: &Path) -> Result<(), String> {
-        Target::initialize_native(&InitializationConfig::default())
-            .map_err(|e| e.to_string())?;
+        Target::initialize_native(&InitializationConfig::default()).map_err(|e| e.to_string())?;
 
         let triple = TargetMachine::get_default_triple();
         let target = Target::from_triple(&triple).map_err(|e| e.to_string())?;
@@ -1367,7 +1624,7 @@ mod tests {
     fn test_function_call() {
         let ir = compile_to_ir(
             "def add(a: Int, b: Int) -> Int = a + b\n\
-             def main() -> Int = add(1, 2)"
+             def main() -> Int = add(1, 2)",
         );
         assert!(ir.contains("call i64 @add(i64 1, i64 2)"));
     }
@@ -1422,7 +1679,7 @@ mod tests {
         let ir = compile_to_ir(
             "def double(x: Int) -> Int = x * 2\n\
              def triple(x: Int) -> Int = x * 3\n\
-             def main() -> Int = double(triple(1))"
+             def main() -> Int = double(triple(1))",
         );
         assert!(ir.contains("@double"));
         assert!(ir.contains("@triple"));
@@ -1436,7 +1693,7 @@ mod tests {
              def main() -> Int = {\n\
                let p = Point { x: 10, y: 20 };\n\
                0\n\
-             }"
+             }",
         );
         assert!(ir.contains("Point"));
         assert!(ir.contains("store i64 10"));
@@ -1450,9 +1707,11 @@ mod tests {
              def main() -> Int = {\n\
                let p = Point { x: 10, y: 20 };\n\
                p.x\n\
-             }"
+             }",
         );
-        assert!(ir.contains("Point.x.ptr") || ir.contains("struct_gep") || ir.contains("getelementptr"));
+        assert!(
+            ir.contains("Point.x.ptr") || ir.contains("struct_gep") || ir.contains("getelementptr")
+        );
     }
 
     #[test]
@@ -1465,7 +1724,7 @@ mod tests {
                  if x == 5 { break } else { 0 }\n\
                };\n\
                x\n\
-             }"
+             }",
         );
         assert!(ir.contains("while_cond"));
         assert!(ir.contains("while_body"));
@@ -1484,7 +1743,7 @@ mod tests {
                  total = total + i\n\
                };\n\
                total\n\
-             }"
+             }",
         );
         assert!(ir.contains("for_cond"));
         assert!(ir.contains("for_body"));
@@ -1503,7 +1762,7 @@ mod tests {
                  total = total + i\n\
                };\n\
                total\n\
-             }"
+             }",
         );
         assert!(ir.contains("for_cond"));
         assert!(ir.contains("for_inc"));
@@ -1525,9 +1784,7 @@ mod tests {
 
     #[test]
     fn test_boolean_and_or() {
-        let ir = compile_to_ir(
-            "def test(a: Bool, b: Bool) -> Bool = a and b"
-        );
+        let ir = compile_to_ir("def test(a: Bool, b: Bool) -> Bool = a and b");
         assert!(ir.contains("and i1"));
     }
 
@@ -1542,7 +1799,7 @@ mod tests {
     fn test_sum_type_no_payload() {
         let ir = compile_to_ir(
             "type Color = Red | Green | Blue\n\
-             def main() -> Int = { let c = Red; 0 }"
+             def main() -> Int = { let c = Red; 0 }",
         );
         // Should have stored tag 0 for Red
         assert!(ir.contains("store i64 0"));
@@ -1552,7 +1809,7 @@ mod tests {
     fn test_sum_type_with_payload() {
         let ir = compile_to_ir(
             "type Maybe = Nothing | Just Int\n\
-             def main() -> Int = { let x = Just(42); 0 }"
+             def main() -> Int = { let x = Just(42); 0 }",
         );
         // Tag for Just = 1, payload = 42
         assert!(ir.contains("store i64 1"));
@@ -1568,7 +1825,7 @@ mod tests {
                Green => 2,\n\
                Blue => 3,\n\
                _ => 0\n\
-             }"
+             }",
         );
         // Should compare tag values
         assert!(ir.contains("match_cmp"));
@@ -1581,7 +1838,7 @@ mod tests {
             "def test(s: String) -> Int = match s {\n\
                \"hello\" => 1,\n\
                _ => 0\n\
-             }"
+             }",
         );
         assert!(ir.contains("strcmp"));
         assert!(ir.contains("hello"));
@@ -1593,7 +1850,7 @@ mod tests {
             "def test(x: Int) -> Int = match x {\n\
                n if n > 0 => 1,\n\
                _ => 0\n\
-             }"
+             }",
         );
         // Guard should produce a conditional branch
         assert!(ir.contains("guard_pass") || ir.contains("icmp sgt"));

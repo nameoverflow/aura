@@ -1,0 +1,12 @@
+type Vec2 = { x: Int }
+
+concept Add {
+  type Output = Int
+  def add(self, other: Self) -> Self.Output
+}
+
+instance Add for Vec2 {
+  def add(self, other: Self) -> Int = self.x + other.x
+}
+
+def sum(a: Vec2, b: Vec2) -> Int = a.add(b)

@@ -45,22 +45,46 @@ pub enum Type {
 
 impl Type {
     pub fn is_numeric(&self) -> bool {
-        matches!(self,
-            Type::Int | Type::Int8 | Type::Int16 | Type::Int32 | Type::Int64 |
-            Type::UInt | Type::UInt8 | Type::UInt16 | Type::UInt32 | Type::UInt64 |
-            Type::Float32 | Type::Float64 | Type::Decimal | Type::BigDecimal
+        matches!(
+            self,
+            Type::Int
+                | Type::Int8
+                | Type::Int16
+                | Type::Int32
+                | Type::Int64
+                | Type::UInt
+                | Type::UInt8
+                | Type::UInt16
+                | Type::UInt32
+                | Type::UInt64
+                | Type::Float32
+                | Type::Float64
+                | Type::Decimal
+                | Type::BigDecimal
         )
     }
 
     pub fn is_integer(&self) -> bool {
-        matches!(self,
-            Type::Int | Type::Int8 | Type::Int16 | Type::Int32 | Type::Int64 |
-            Type::UInt | Type::UInt8 | Type::UInt16 | Type::UInt32 | Type::UInt64
+        matches!(
+            self,
+            Type::Int
+                | Type::Int8
+                | Type::Int16
+                | Type::Int32
+                | Type::Int64
+                | Type::UInt
+                | Type::UInt8
+                | Type::UInt16
+                | Type::UInt32
+                | Type::UInt64
         )
     }
 
     pub fn is_float(&self) -> bool {
-        matches!(self, Type::Float32 | Type::Float64 | Type::Decimal | Type::BigDecimal)
+        matches!(
+            self,
+            Type::Float32 | Type::Float64 | Type::Decimal | Type::BigDecimal
+        )
     }
 
     /// Resolve a type name to its primitive Type, if applicable.

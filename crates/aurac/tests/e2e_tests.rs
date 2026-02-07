@@ -169,8 +169,11 @@ fn compile_only(fixture: &str) -> (bool, String) {
 fn test_error_undefined_var() {
     let (ok, stderr) = compile_only("error_undefined_var.aura");
     assert!(!ok, "expected compile failure");
-    assert!(stderr.contains("undefined") || stderr.contains("not found") || stderr.contains("error"),
-        "expected error about undefined variable, got: {}", stderr);
+    assert!(
+        stderr.contains("undefined") || stderr.contains("not found") || stderr.contains("error"),
+        "expected error about undefined variable, got: {}",
+        stderr
+    );
 }
 
 #[test]

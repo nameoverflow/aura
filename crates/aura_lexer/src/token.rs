@@ -51,54 +51,54 @@ pub enum TokenKind {
     StringLit(String),
 
     // String interpolation tokens
-    StringStart(String),  // text before first interpolation
-    StringMid(String),    // text between interpolations
-    StringEnd(String),    // text after last interpolation
-    InterpStart,          // {
-    InterpEnd,            // }
+    StringStart(String), // text before first interpolation
+    StringMid(String),   // text between interpolations
+    StringEnd(String),   // text after last interpolation
+    InterpStart,         // {
+    InterpEnd,           // }
 
     // Identifiers
-    Ident(String),        // lowercase: value/variable
-    UpperIdent(String),   // uppercase: type/variant
+    Ident(String),      // lowercase: value/variable
+    UpperIdent(String), // uppercase: type/variant
 
     // Operators
-    Plus,         // +
-    Minus,        // -
-    Star,         // *
-    Slash,        // /
-    Percent,      // %
-    Eq,           // ==
-    NotEq,        // !=
-    Lt,           // <
-    Gt,           // >
-    LtEq,        // <=
-    GtEq,        // >=
-    Assign,       // =
-    Pipeline,     // |>
-    Arrow,        // ->
-    Question,     // ?
-    DotDot,       // ..
-    DotDotEq,     // ..=
-    FatArrow,     // =>
+    Plus,     // +
+    Minus,    // -
+    Star,     // *
+    Slash,    // /
+    Percent,  // %
+    Eq,       // ==
+    NotEq,    // !=
+    Lt,       // <
+    Gt,       // >
+    LtEq,     // <=
+    GtEq,     // >=
+    Assign,   // =
+    Pipeline, // |>
+    Arrow,    // ->
+    Question, // ?
+    DotDot,   // ..
+    DotDotEq, // ..=
+    FatArrow, // =>
 
     // Delimiters
-    LParen,       // (
-    RParen,       // )
-    LBrace,       // {
-    RBrace,       // }
-    LBracket,     // [
-    RBracket,     // ]
-    Comma,        // ,
-    Colon,        // :
-    ColonColon,   // ::
-    Dot,          // .
-    Semicolon,    // ;
-    Pipe,         // |
+    LParen,     // (
+    RParen,     // )
+    LBrace,     // {
+    RBrace,     // }
+    LBracket,   // [
+    RBracket,   // ]
+    Comma,      // ,
+    Colon,      // :
+    ColonColon, // ::
+    Dot,        // .
+    Semicolon,  // ;
+    Pipe,       // |
 
     // Special
-    At,           // @
-    DocComment(String),  // /// ...
-    Underscore,   // _
+    At,                 // @
+    DocComment(String), // /// ...
+    Underscore,         // _
 
     // Control
     Eof,

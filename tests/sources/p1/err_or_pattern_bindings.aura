@@ -1,0 +1,6 @@
+type OptionInt = Some Int | None
+
+def broken(x: OptionInt) -> Int =
+  match x {
+    Some(n) | None => n
+  }

@@ -17,6 +17,8 @@ pub struct Module {
 pub enum Item {
     Function(FnDef),
     TypeDef(TypeDef),
+    ConceptDef(ConceptDef),
+    InstanceDef(InstanceDef),
     Use(UseDecl),
     ModuleDecl(ModuleDecl),
     TypeAnnotation(TypeAnnotation),
@@ -57,6 +59,65 @@ pub struct TypeDef {
     pub type_params: Vec<String>,
     pub kind: TypeDefKind,
     pub is_pub: bool,
+    pub span: Span,
+}
+
+/// Concept definition
+#[derive(Debug, Clone)]
+pub struct ConceptDef {
+    pub name: String,
+    pub supers: Vec<String>,
+    pub assoc_types: Vec<AssocTypeDecl>,
+    pub methods: Vec<ConceptMethodSig>,
+    pub is_pub: bool,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct AssocTypeDecl {
+    pub name: String,
+    pub default: Option<TypeExpr>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConceptMethodSig {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub return_type: Option<TypeExpr>,
+    pub default_body: Option<Expr>,
+    pub span: Span,
+}
+
+/// Instance definition
+#[derive(Debug, Clone)]
+pub struct InstanceDef {
+    pub kind: InstanceKind,
+    pub assoc_types: Vec<AssocTypeBinding>,
+    pub methods: Vec<MethodDef>,
+    pub is_pub: bool,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum InstanceKind {
+    Inherent(TypeExpr),
+    Concept { concept: String, for_type: TypeExpr },
+}
+
+#[derive(Debug, Clone)]
+pub struct AssocTypeBinding {
+    pub name: String,
+    pub ty: TypeExpr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct MethodDef {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub return_type: Option<TypeExpr>,
+    pub body: Expr,
     pub span: Span,
 }
 
@@ -106,7 +167,15 @@ pub enum TypeExpr {
     App(Box<TypeExpr>, Vec<TypeExpr>, Span),
     Product(Vec<TypeExpr>, Span),
     Function(Vec<TypeExpr>, Box<TypeExpr>, Span),
+    Forall(Vec<ConceptConstraint>, Box<TypeExpr>, Span),
     Unit(Span),
+}
+
+#[derive(Debug, Clone)]
+pub struct ConceptConstraint {
+    pub concept: String,
+    pub ty_var: String,
+    pub span: Span,
 }
 
 impl TypeExpr {
@@ -116,6 +185,7 @@ impl TypeExpr {
             TypeExpr::App(_, _, s) => *s,
             TypeExpr::Product(_, s) => *s,
             TypeExpr::Function(_, _, s) => *s,
+            TypeExpr::Forall(_, _, s) => *s,
             TypeExpr::Unit(s) => *s,
         }
     }
@@ -140,9 +210,11 @@ pub enum Expr {
     If(Box<Expr>, Box<Expr>, Option<Box<Expr>>, Span),
     Match(Box<Expr>, Vec<MatchArm>, Span),
     For(String, Box<Expr>, Box<Expr>, Span),
+    ForPattern(Pattern, Box<Expr>, Box<Expr>, Span),
     While(Box<Expr>, Box<Expr>, Span),
 
     Let(String, bool, Option<TypeExpr>, Box<Expr>, Span),
+    LetPattern(Pattern, bool, Option<TypeExpr>, Box<Expr>, Span),
     Assign(Box<Expr>, Box<Expr>, Span),
     Return(Option<Box<Expr>>, Span),
     Break(Span),
@@ -180,8 +252,10 @@ impl Expr {
             Expr::If(_, _, _, s) => *s,
             Expr::Match(_, _, s) => *s,
             Expr::For(_, _, _, s) => *s,
+            Expr::ForPattern(_, _, _, s) => *s,
             Expr::While(_, _, s) => *s,
             Expr::Let(_, _, _, _, s) => *s,
+            Expr::LetPattern(_, _, _, _, s) => *s,
             Expr::Assign(_, _, s) => *s,
             Expr::Return(_, s) => *s,
             Expr::Break(s) => *s,
@@ -215,9 +289,19 @@ pub enum StringPartKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinOp {
-    Add, Sub, Mul, Div, Mod,
-    Eq, NotEq, Lt, Gt, LtEq, GtEq,
-    And, Or,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Eq,
+    NotEq,
+    Lt,
+    Gt,
+    LtEq,
+    GtEq,
+    And,
+    Or,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -241,6 +325,15 @@ pub enum Pattern {
     Literal(LitPattern, Span),
     Constructor(String, Vec<Pattern>, Span),
     Tuple(Vec<Pattern>, Span),
+    Struct(String, Vec<FieldPattern>, bool, Span),
+    Or(Vec<Pattern>, Span),
+}
+
+#[derive(Debug, Clone)]
+pub struct FieldPattern {
+    pub name: String,
+    pub pattern: Pattern,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]

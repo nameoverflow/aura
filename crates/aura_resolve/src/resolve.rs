@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use crate::scope::Scope;
 use aura_common::Span;
 use aura_parser::ast::*;
-use crate::scope::Scope;
+use std::collections::HashMap;
 
 pub use crate::scope::DefId;
 
@@ -13,17 +13,24 @@ pub struct ResolveError {
 
 impl std::fmt::Display for ResolveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "resolve error at {}..{}: {}", self.span.start, self.span.end, self.message)
+        write!(
+            f,
+            "resolve error at {}..{}: {}",
+            self.span.start, self.span.end, self.message
+        )
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum DefKind {
     Function,
+    Concept,
+    Method,
     Variable,
     Parameter,
     Type,
     Variant { parent_type: String },
+    AssocType,
 }
 
 #[derive(Debug, Clone)]
@@ -71,46 +78,84 @@ impl Resolver {
             errors: Vec::new(),
         };
         // Register built-in types in the prelude scope
-        for ty in ["Int", "Int8", "Int16", "Int32", "Int64",
-                    "UInt", "UInt8", "UInt16", "UInt32", "UInt64",
-                    "Float32", "Float64", "Decimal", "BigDecimal",
-                    "Bool", "Char", "String", "Unit",
-                    "Option", "Result", "List", "Map", "Set"] {
+        for ty in [
+            "Int",
+            "Int8",
+            "Int16",
+            "Int32",
+            "Int64",
+            "UInt",
+            "UInt8",
+            "UInt16",
+            "UInt32",
+            "UInt64",
+            "Float32",
+            "Float64",
+            "Decimal",
+            "BigDecimal",
+            "Bool",
+            "Char",
+            "String",
+            "Unit",
+            "Option",
+            "Result",
+            "List",
+            "Map",
+            "Set",
+        ] {
             let id = resolver.fresh_id();
             resolver.scope.define(ty.to_string(), id);
-            resolver.defs.insert(id, DefInfo {
+            resolver.defs.insert(
                 id,
-                name: ty.to_string(),
-                kind: DefKind::Type,
-                span: Span::dummy(),
-                is_pub: true,
-            });
+                DefInfo {
+                    id,
+                    name: ty.to_string(),
+                    kind: DefKind::Type,
+                    span: Span::dummy(),
+                    is_pub: true,
+                },
+            );
             resolver.type_defs.insert(ty.to_string(), id);
         }
         // Built-in variants: Some, None, Ok, Err
-        for (variant, parent) in [("Some", "Option"), ("None", "Option"), ("Ok", "Result"), ("Err", "Result")] {
+        for (variant, parent) in [
+            ("Some", "Option"),
+            ("None", "Option"),
+            ("Ok", "Result"),
+            ("Err", "Result"),
+        ] {
             let id = resolver.fresh_id();
             resolver.scope.define(variant.to_string(), id);
-            resolver.defs.insert(id, DefInfo {
+            resolver.defs.insert(
                 id,
-                name: variant.to_string(),
-                kind: DefKind::Variant { parent_type: parent.to_string() },
-                span: Span::dummy(),
-                is_pub: true,
-            });
-            resolver.variant_types.insert(variant.to_string(), parent.to_string());
+                DefInfo {
+                    id,
+                    name: variant.to_string(),
+                    kind: DefKind::Variant {
+                        parent_type: parent.to_string(),
+                    },
+                    span: Span::dummy(),
+                    is_pub: true,
+                },
+            );
+            resolver
+                .variant_types
+                .insert(variant.to_string(), parent.to_string());
         }
         // Built-in functions
         for func in ["print", "println"] {
             let id = resolver.fresh_id();
             resolver.scope.define(func.to_string(), id);
-            resolver.defs.insert(id, DefInfo {
+            resolver.defs.insert(
                 id,
-                name: func.to_string(),
-                kind: DefKind::Function,
-                span: Span::dummy(),
-                is_pub: true,
-            });
+                DefInfo {
+                    id,
+                    name: func.to_string(),
+                    kind: DefKind::Function,
+                    span: Span::dummy(),
+                    is_pub: true,
+                },
+            );
         }
         resolver
     }
@@ -156,24 +201,30 @@ impl Resolver {
                             span: f.span,
                         });
                     }
-                    self.defs.insert(id, DefInfo {
+                    self.defs.insert(
                         id,
-                        name: f.name.clone(),
-                        kind: DefKind::Function,
-                        span: f.span,
-                        is_pub: f.is_pub,
-                    });
+                        DefInfo {
+                            id,
+                            name: f.name.clone(),
+                            kind: DefKind::Function,
+                            span: f.span,
+                            is_pub: f.is_pub,
+                        },
+                    );
                 }
                 Item::TypeDef(td) => {
                     let id = self.fresh_id();
                     self.scope.define(td.name.clone(), id);
-                    self.defs.insert(id, DefInfo {
+                    self.defs.insert(
                         id,
-                        name: td.name.clone(),
-                        kind: DefKind::Type,
-                        span: td.span,
-                        is_pub: td.is_pub,
-                    });
+                        DefInfo {
+                            id,
+                            name: td.name.clone(),
+                            kind: DefKind::Type,
+                            span: td.span,
+                            is_pub: td.is_pub,
+                        },
+                    );
                     self.type_defs.insert(td.name.clone(), id);
 
                     // Register variants for sum types
@@ -181,16 +232,45 @@ impl Resolver {
                         for variant in variants {
                             let vid = self.fresh_id();
                             self.scope.define(variant.name.clone(), vid);
-                            self.defs.insert(vid, DefInfo {
-                                id: vid,
-                                name: variant.name.clone(),
-                                kind: DefKind::Variant { parent_type: td.name.clone() },
-                                span: variant.span,
-                                is_pub: td.is_pub,
-                            });
-                            self.variant_types.insert(variant.name.clone(), td.name.clone());
+                            self.defs.insert(
+                                vid,
+                                DefInfo {
+                                    id: vid,
+                                    name: variant.name.clone(),
+                                    kind: DefKind::Variant {
+                                        parent_type: td.name.clone(),
+                                    },
+                                    span: variant.span,
+                                    is_pub: td.is_pub,
+                                },
+                            );
+                            self.variant_types
+                                .insert(variant.name.clone(), td.name.clone());
                         }
                     }
+                }
+                Item::ConceptDef(cd) => {
+                    let id = self.fresh_id();
+                    let prev = self.scope.define(cd.name.clone(), id);
+                    if prev.is_some() {
+                        self.errors.push(ResolveError {
+                            message: format!("duplicate definition '{}'", cd.name),
+                            span: cd.span,
+                        });
+                    }
+                    self.defs.insert(
+                        id,
+                        DefInfo {
+                            id,
+                            name: cd.name.clone(),
+                            kind: DefKind::Concept,
+                            span: cd.span,
+                            is_pub: cd.is_pub,
+                        },
+                    );
+                }
+                Item::InstanceDef(_) => {
+                    // Instances do not introduce top-level names.
                 }
                 Item::TypeAnnotation(_) => {
                     // Type annotations are handled when their matching def is resolved
@@ -209,13 +289,16 @@ impl Resolver {
                 for param in &f.params {
                     let id = self.fresh_id();
                     self.scope.define(param.name.clone(), id);
-                    self.defs.insert(id, DefInfo {
+                    self.defs.insert(
                         id,
-                        name: param.name.clone(),
-                        kind: DefKind::Parameter,
-                        span: param.span,
-                        is_pub: false,
-                    });
+                        DefInfo {
+                            id,
+                            name: param.name.clone(),
+                            kind: DefKind::Parameter,
+                            span: param.span,
+                            is_pub: false,
+                        },
+                    );
                     if let Some(ty) = &param.ty {
                         self.resolve_type_expr(ty);
                     }
@@ -226,28 +309,178 @@ impl Resolver {
                 self.resolve_expr(&f.body);
                 self.scope.pop();
             }
-            Item::TypeDef(td) => {
-                match &td.kind {
-                    TypeDefKind::Sum(variants) => {
-                        for variant in variants {
-                            for field in &variant.fields {
-                                self.resolve_type_expr(field);
-                            }
+            Item::TypeDef(td) => match &td.kind {
+                TypeDefKind::Sum(variants) => {
+                    for variant in variants {
+                        for field in &variant.fields {
+                            self.resolve_type_expr(field);
                         }
-                    }
-                    TypeDefKind::Struct(fields) => {
-                        for field in fields {
-                            self.resolve_type_expr(&field.ty);
-                        }
-                    }
-                    TypeDefKind::Refined { base_type, constraint } => {
-                        self.resolve_type_expr(base_type);
-                        self.resolve_expr(constraint);
                     }
                 }
-            }
+                TypeDefKind::Struct(fields) => {
+                    for field in fields {
+                        self.resolve_type_expr(&field.ty);
+                    }
+                }
+                TypeDefKind::Refined {
+                    base_type,
+                    constraint,
+                } => {
+                    self.resolve_type_expr(base_type);
+                    self.resolve_expr(constraint);
+                }
+            },
+            Item::ConceptDef(cd) => self.resolve_concept_def(cd),
+            Item::InstanceDef(inst) => self.resolve_instance_def(inst),
             Item::Use(_) | Item::ModuleDecl(_) | Item::TypeAnnotation(_) => {}
         }
+    }
+
+    fn resolve_concept_def(&mut self, cd: &ConceptDef) {
+        for sup in &cd.supers {
+            if self.scope.lookup(sup).is_none() {
+                self.errors.push(ResolveError {
+                    message: format!("undefined concept '{}'", sup),
+                    span: cd.span,
+                });
+            }
+        }
+
+        self.scope.push();
+        // Self is valid in concept method signatures.
+        let self_id = self.fresh_id();
+        self.scope.define("Self".into(), self_id);
+        self.defs.insert(
+            self_id,
+            DefInfo {
+                id: self_id,
+                name: "Self".into(),
+                kind: DefKind::Type,
+                span: cd.span,
+                is_pub: false,
+            },
+        );
+
+        for assoc in &cd.assoc_types {
+            let id = self.fresh_id();
+            self.scope.define(assoc.name.clone(), id);
+            self.defs.insert(
+                id,
+                DefInfo {
+                    id,
+                    name: assoc.name.clone(),
+                    kind: DefKind::AssocType,
+                    span: assoc.span,
+                    is_pub: false,
+                },
+            );
+            if let Some(default) = &assoc.default {
+                self.resolve_type_expr(default);
+            }
+        }
+
+        for method in &cd.methods {
+            self.scope.push();
+            for param in &method.params {
+                let id = self.fresh_id();
+                self.scope.define(param.name.clone(), id);
+                self.defs.insert(
+                    id,
+                    DefInfo {
+                        id,
+                        name: param.name.clone(),
+                        kind: DefKind::Parameter,
+                        span: param.span,
+                        is_pub: false,
+                    },
+                );
+                if let Some(ty) = &param.ty {
+                    self.resolve_type_expr(ty);
+                }
+            }
+            if let Some(ret) = &method.return_type {
+                self.resolve_type_expr(ret);
+            }
+            if let Some(body) = &method.default_body {
+                self.resolve_expr(body);
+            }
+            self.scope.pop();
+        }
+
+        self.scope.pop();
+    }
+
+    fn resolve_instance_def(&mut self, inst: &InstanceDef) {
+        match &inst.kind {
+            InstanceKind::Inherent(target) => self.resolve_type_expr(target),
+            InstanceKind::Concept { concept, for_type } => {
+                if self.scope.lookup(concept).is_none() {
+                    self.errors.push(ResolveError {
+                        message: format!("undefined concept '{}'", concept),
+                        span: inst.span,
+                    });
+                }
+                self.resolve_type_expr(for_type);
+            }
+        }
+
+        self.scope.push();
+        let self_id = self.fresh_id();
+        self.scope.define("Self".into(), self_id);
+        self.defs.insert(
+            self_id,
+            DefInfo {
+                id: self_id,
+                name: "Self".into(),
+                kind: DefKind::Type,
+                span: inst.span,
+                is_pub: false,
+            },
+        );
+
+        for assoc in &inst.assoc_types {
+            self.resolve_type_expr(&assoc.ty);
+            let id = self.fresh_id();
+            self.scope.define(assoc.name.clone(), id);
+            self.defs.insert(
+                id,
+                DefInfo {
+                    id,
+                    name: assoc.name.clone(),
+                    kind: DefKind::AssocType,
+                    span: assoc.span,
+                    is_pub: false,
+                },
+            );
+        }
+
+        for method in &inst.methods {
+            self.scope.push();
+            for param in &method.params {
+                let id = self.fresh_id();
+                self.scope.define(param.name.clone(), id);
+                self.defs.insert(
+                    id,
+                    DefInfo {
+                        id,
+                        name: param.name.clone(),
+                        kind: DefKind::Parameter,
+                        span: param.span,
+                        is_pub: false,
+                    },
+                );
+                if let Some(ty) = &param.ty {
+                    self.resolve_type_expr(ty);
+                }
+            }
+            if let Some(ret) = &method.return_type {
+                self.resolve_type_expr(ret);
+            }
+            self.resolve_expr(&method.body);
+            self.scope.pop();
+        }
+
+        self.scope.pop();
     }
 
     fn resolve_type_expr(&mut self, ty: &TypeExpr) {
@@ -255,7 +488,14 @@ impl Resolver {
             TypeExpr::Named(name, span) => {
                 if let Some(id) = self.scope.lookup(name) {
                     self.references.insert((span.start, span.end), id);
-                } else if name.len() == 1 && name.chars().next().unwrap().is_lowercase() {
+                } else if name == "Self" || name.starts_with("Self.") {
+                    // `Self` and `Self.Assoc` are valid in concept/instance contexts.
+                } else if name
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_lowercase())
+                    .unwrap_or(false)
+                {
                     // Type variable — no resolution needed
                 } else {
                     self.errors.push(ResolveError {
@@ -280,6 +520,17 @@ impl Resolver {
                     self.resolve_type_expr(p);
                 }
                 self.resolve_type_expr(ret);
+            }
+            TypeExpr::Forall(bounds, body, _) => {
+                for bound in bounds {
+                    if self.scope.lookup(&bound.concept).is_none() {
+                        self.errors.push(ResolveError {
+                            message: format!("undefined concept '{}'", bound.concept),
+                            span: bound.span,
+                        });
+                    }
+                }
+                self.resolve_type_expr(body);
             }
             TypeExpr::Unit(_) => {}
         }
@@ -353,13 +604,23 @@ impl Resolver {
                 self.scope.push();
                 let id = self.fresh_id();
                 self.scope.define(var.clone(), id);
-                self.defs.insert(id, DefInfo {
+                self.defs.insert(
                     id,
-                    name: var.clone(),
-                    kind: DefKind::Variable,
-                    span: *span,
-                    is_pub: false,
-                });
+                    DefInfo {
+                        id,
+                        name: var.clone(),
+                        kind: DefKind::Variable,
+                        span: *span,
+                        is_pub: false,
+                    },
+                );
+                self.resolve_expr(body);
+                self.scope.pop();
+            }
+            Expr::ForPattern(pattern, iter, body, _) => {
+                self.resolve_expr(iter);
+                self.scope.push();
+                self.resolve_pattern(pattern);
                 self.resolve_expr(body);
                 self.scope.pop();
             }
@@ -374,13 +635,23 @@ impl Resolver {
                 }
                 let id = self.fresh_id();
                 self.scope.define(name.clone(), id);
-                self.defs.insert(id, DefInfo {
+                self.defs.insert(
                     id,
-                    name: name.clone(),
-                    kind: DefKind::Variable,
-                    span: *span,
-                    is_pub: false,
-                });
+                    DefInfo {
+                        id,
+                        name: name.clone(),
+                        kind: DefKind::Variable,
+                        span: *span,
+                        is_pub: false,
+                    },
+                );
+            }
+            Expr::LetPattern(pattern, _, ty, value, _) => {
+                self.resolve_expr(value);
+                if let Some(t) = ty {
+                    self.resolve_type_expr(t);
+                }
+                self.resolve_pattern(pattern);
             }
             Expr::Assign(target, value, _) => {
                 self.resolve_expr(target);
@@ -410,13 +681,16 @@ impl Resolver {
                 for param in params {
                     let id = self.fresh_id();
                     self.scope.define(param.name.clone(), id);
-                    self.defs.insert(id, DefInfo {
+                    self.defs.insert(
                         id,
-                        name: param.name.clone(),
-                        kind: DefKind::Parameter,
-                        span: param.span,
-                        is_pub: false,
-                    });
+                        DefInfo {
+                            id,
+                            name: param.name.clone(),
+                            kind: DefKind::Parameter,
+                            span: param.span,
+                            is_pub: false,
+                        },
+                    );
                 }
                 self.resolve_expr(body);
                 self.scope.pop();
@@ -457,8 +731,10 @@ impl Resolver {
                     }
                 }
             }
-            Expr::IntLit(_, _) | Expr::FloatLit(_, _) |
-            Expr::StringLit(_, _) | Expr::BoolLit(_, _) => {}
+            Expr::IntLit(_, _)
+            | Expr::FloatLit(_, _)
+            | Expr::StringLit(_, _)
+            | Expr::BoolLit(_, _) => {}
         }
     }
 
@@ -468,13 +744,16 @@ impl Resolver {
             Pattern::Ident(name, span) => {
                 let id = self.fresh_id();
                 self.scope.define(name.clone(), id);
-                self.defs.insert(id, DefInfo {
+                self.defs.insert(
                     id,
-                    name: name.clone(),
-                    kind: DefKind::Variable,
-                    span: *span,
-                    is_pub: false,
-                });
+                    DefInfo {
+                        id,
+                        name: name.clone(),
+                        kind: DefKind::Variable,
+                        span: *span,
+                        is_pub: false,
+                    },
+                );
             }
             Pattern::Literal(_, _) => {}
             Pattern::Constructor(name, args, span) => {
@@ -491,6 +770,24 @@ impl Resolver {
             Pattern::Tuple(pats, _) => {
                 for p in pats {
                     self.resolve_pattern(p);
+                }
+            }
+            Pattern::Struct(name, fields, _, span) => {
+                if let Some(id) = self.scope.lookup(name) {
+                    self.references.insert((span.start, span.end), id);
+                }
+                for field in fields {
+                    self.resolve_pattern(&field.pattern);
+                }
+            }
+            Pattern::Or(patterns, _) => {
+                if let Some(first) = patterns.first() {
+                    self.resolve_pattern(first);
+                }
+                for pat in patterns.iter().skip(1) {
+                    self.scope.push();
+                    self.resolve_pattern(pat);
+                    self.scope.pop();
                 }
             }
         }
@@ -540,9 +837,7 @@ mod tests {
 
     #[test]
     fn test_resolve_nested_scope() {
-        let result = resolve_str(
-            "def test() -> Int = { let x = 1; { let y = x; y } }"
-        );
+        let result = resolve_str("def test() -> Int = { let x = 1; { let y = x; y } }");
         assert!(result.is_ok());
     }
 
@@ -550,7 +845,7 @@ mod tests {
     fn test_resolve_function_call() {
         let result = resolve_str(
             "def add(a: Int, b: Int) -> Int = a + b\n\
-             def main() -> Int = add(1, 2)"
+             def main() -> Int = add(1, 2)",
         );
         assert!(result.is_ok());
     }
@@ -559,7 +854,7 @@ mod tests {
     fn test_resolve_type_def() {
         let result = resolve_str(
             "type Status = Pending | Complete\n\
-             def test() -> Int = 0"
+             def test() -> Int = 0",
         );
         assert!(result.is_ok());
         let resolved = result.unwrap();
@@ -570,58 +865,54 @@ mod tests {
 
     #[test]
     fn test_resolve_match_binding() {
-        let result = resolve_str(
-            "def test(x: Int) -> Int = match x { n => n }"
-        );
+        let result = resolve_str("def test(x: Int) -> Int = match x { n => n }");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_resolve_lambda() {
-        let result = resolve_str(
-            "def test() -> Int = { let f = (x) -> x + 1; f(10) }"
-        );
+        let result = resolve_str("def test() -> Int = { let f = (x) -> x + 1; f(10) }");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_resolve_for_loop_binding() {
-        let result = resolve_str(
-            "def test() -> Int = for i in 0..10 { i }"
-        );
+        let result = resolve_str("def test() -> Int = for i in 0..10 { i }");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_resolve_builtin_types() {
+        let result = resolve_str("def test(x: Int, y: String, z: Bool) -> Float64 = 0.0");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_resolve_multi_char_type_vars() {
         let result = resolve_str(
-            "def test(x: Int, y: String, z: Bool) -> Float64 = 0.0"
+            "id: value -> value\n\
+             def id(x) = x\n\
+             def test(x: Result value error) -> Int = 0",
         );
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_resolve_print() {
-        let result = resolve_str(
-            "def main() -> Int = { println(42); 0 }"
-        );
+        let result = resolve_str("def main() -> Int = { println(42); 0 }");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_resolve_duplicate_def() {
-        let result = resolve_str(
-            "def foo() -> Int = 1\ndef foo() -> Int = 2"
-        );
+        let result = resolve_str("def foo() -> Int = 1\ndef foo() -> Int = 2");
         assert!(result.is_err());
         assert!(result.unwrap_err()[0].message.contains("duplicate"));
     }
 
     #[test]
     fn test_resolve_option_variants() {
-        let result = resolve_str(
-            "def test(x: Int) -> Int = match x { 0 => 0, n => n }"
-        );
+        let result = resolve_str("def test(x: Int) -> Int = match x { 0 => 0, n => n }");
         assert!(result.is_ok());
     }
 
@@ -629,10 +920,40 @@ mod tests {
     fn test_resolve_struct_type() {
         let result = resolve_str(
             "type User = { name: String, age: Int }\n\
-             def test() -> Int = 0"
+             def test() -> Int = 0",
         );
         assert!(result.is_ok());
         let resolved = result.unwrap();
         assert!(resolved.type_defs.contains_key("User"));
+    }
+
+    #[test]
+    fn test_resolve_struct_pattern() {
+        let result = resolve_str(
+            "type User = { name: String, age: Int }\n\
+             def test(u: User) -> String = match u { User { name, .. } => name }",
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_resolve_or_pattern() {
+        let result = resolve_str(
+            "type OptionInt = Some Int | None\n\
+             def test(x: OptionInt) -> Int = match x { Some(n) | None => 0, Some(m) => m }",
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_resolve_let_pattern() {
+        let result = resolve_str("def test() -> Int = { let (a, b) = (1, 2); a }");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_resolve_for_pattern() {
+        let result = resolve_str("def test() -> Int = { for _ in 0..10 { 0 }; 1 }");
+        assert!(result.is_ok());
     }
 }

@@ -3,11 +3,11 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
+use aura_codegen::CodeGen;
 use aura_lexer::Lexer;
 use aura_parser::Parser;
 use aura_resolve::Resolver;
 use aura_types::TypeChecker;
-use aura_codegen::CodeGen;
 use inkwell::context::Context;
 
 fn main() {
@@ -21,7 +21,9 @@ fn main() {
     let source_path = &args[1];
     let emit_ir = args.contains(&"--emit-ir".to_string());
     let no_link = args.contains(&"--no-link".to_string());
-    let output_path = args.iter().position(|a| a == "-o")
+    let output_path = args
+        .iter()
+        .position(|a| a == "-o")
         .and_then(|i| args.get(i + 1))
         .cloned();
 
@@ -58,14 +60,18 @@ fn compile(
     // Check for lexer errors
     for tok in &tokens {
         if let aura_lexer::TokenKind::Error(msg) = &tok.kind {
-            return Err(format!("lexer error at {}..{}: {}", tok.span.start, tok.span.end, msg));
+            return Err(format!(
+                "lexer error at {}..{}: {}",
+                tok.span.start, tok.span.end, msg
+            ));
         }
     }
 
     // Step 2: Parse
     let mut parser = Parser::new(tokens);
     let module = parser.parse_module().map_err(|errors| {
-        errors.iter()
+        errors
+            .iter()
             .map(|e| e.to_string())
             .collect::<Vec<_>>()
             .join("\n")
@@ -74,7 +80,8 @@ fn compile(
     // Step 3: Name Resolution
     let resolver = Resolver::new();
     let resolved = resolver.resolve(module).map_err(|errors| {
-        errors.iter()
+        errors
+            .iter()
             .map(|e| e.to_string())
             .collect::<Vec<_>>()
             .join("\n")
@@ -83,7 +90,8 @@ fn compile(
     // Step 4: Type Check
     let checker = TypeChecker::new();
     let _typed = checker.check(&resolved).map_err(|errors| {
-        errors.iter()
+        errors
+            .iter()
             .map(|e| e.to_string())
             .collect::<Vec<_>>()
             .join("\n")
@@ -114,7 +122,8 @@ fn compile(
     }
 
     // Link to executable
-    let exe_path = output_path.map(PathBuf::from)
+    let exe_path = output_path
+        .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(source_path).with_extension(""));
 
     let status = Command::new("cc")

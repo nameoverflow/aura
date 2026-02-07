@@ -1,0 +1,33 @@
+type User = { name: String }
+
+concept Display {
+  def display(self) -> String
+}
+
+concept A {
+  def m(self) -> Int
+}
+
+concept B {
+  def m(self) -> Int
+}
+
+instance Display for User {
+  def display(self) -> String = self.name
+}
+
+instance A for User {
+  def m(self) -> Int = 1
+}
+
+instance B for User {
+  def m(self) -> Int = 2
+}
+
+show: forall (Display a). a -> String
+def show(x) = x.display()
+
+def test(u: User) -> Int = {
+  let _s = show(u)
+  A.m(u)
+}

@@ -1,5 +1,5 @@
-pub mod span;
 pub mod intern;
+pub mod span;
 
-pub use span::Span;
 pub use intern::{Interner, Symbol};
+pub use span::Span;

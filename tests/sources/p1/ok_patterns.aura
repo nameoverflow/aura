@@ -1,0 +1,26 @@
+type User = { name: String, age: Int }
+type OptionInt = Some Int | None
+
+def pick_name(u: User) -> String =
+  match u {
+    User { name, .. } => name
+  }
+
+def maybe_num(x: OptionInt) -> Int =
+  match x {
+    None | Some(0) => 0,
+    Some(n) => n
+  }
+
+def tuple_bind() -> Int = {
+  let (a, b) = (1, 2)
+  a + b
+}
+
+def loop_bind() -> Int = {
+  for (x, y) in (1, 2)..(3, 4) {
+    let _ = x
+    let _ = y
+  }
+  0
+}
