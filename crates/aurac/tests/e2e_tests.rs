@@ -15,7 +15,7 @@ fn aurac_binary() -> PathBuf {
 
 fn compile_and_run(fixture: &str) -> (bool, String, i32) {
     let root = workspace_root();
-    let source = root.join("tests").join("fixtures").join(fixture);
+    let source = root.join("tests").join("sources").join("e2e").join(fixture);
     let stem = fixture.strip_suffix(".aura").unwrap();
     let output = std::env::temp_dir().join(format!("aura_test_{}", stem));
 
@@ -149,7 +149,7 @@ fn test_hex_literals() {
 /// Test that compiling an invalid program produces a compile error
 fn compile_only(fixture: &str) -> (bool, String) {
     let root = workspace_root();
-    let source = root.join("tests").join("fixtures").join(fixture);
+    let source = root.join("tests").join("sources").join("e2e").join(fixture);
     let stem = fixture.strip_suffix(".aura").unwrap();
     let output = std::env::temp_dir().join(format!("aura_test_{}", stem));
 
