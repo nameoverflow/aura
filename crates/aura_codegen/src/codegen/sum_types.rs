@@ -1,10 +1,65 @@
 use inkwell::values::BasicValueEnum;
 
 use aura_parser::ast;
+use aura_types::types::Type;
 
 use super::CodeGen;
 
 impl<'ctx> CodeGen<'ctx> {
+    pub(crate) fn compile_builtin_variant_construct(
+        &mut self,
+        expr: &ast::Expr,
+        variant_name: &str,
+        args: &[ast::Expr],
+    ) -> Result<Option<BasicValueEnum<'ctx>>, String> {
+        match variant_name {
+            "Some" | "Ok" | "Err" => {
+                if args.len() != 1 {
+                    return Err(format!(
+                        "builtin variant '{variant_name}' expects 1 argument, got {}",
+                        args.len()
+                    ));
+                }
+                self.compile_expr(&args[0])
+            }
+            "None" => {
+                if !args.is_empty() {
+                    return Err(format!(
+                        "builtin variant 'None' expects 0 arguments, got {}",
+                        args.len()
+                    ));
+                }
+
+                // Codegen-level encoding for Option/Result builtins currently uses the
+                // zero value for the expression's lowered type.
+                let value = if let Some(ty) = self.expr_type(expr) {
+                    self.zero_value_for_type(self.type_to_llvm(&ty))
+                } else {
+                    // Fallback to i64 zero when expression typing is unavailable.
+                    self.context.i64_type().const_zero().into()
+                };
+                Ok(Some(value))
+            }
+            _ => Err(format!("unknown builtin variant '{variant_name}'")),
+        }
+    }
+
+    pub(crate) fn compile_builtin_variant_call(
+        &mut self,
+        expr: &ast::Expr,
+        variant_name: &str,
+        args: &[ast::Expr],
+    ) -> Result<Option<BasicValueEnum<'ctx>>, String> {
+        // If the typechecker recorded this as Option/Result, keep zero-payload/identity
+        // encoding consistent for current backend representation.
+        if let Some(Type::Named(name, _)) = self.expr_type(expr) {
+            if name == "Option" || name == "Result" {
+                return self.compile_builtin_variant_construct(expr, variant_name, args);
+            }
+        }
+        self.compile_builtin_variant_construct(expr, variant_name, args)
+    }
+
     /// Construct a zero-payload variant (e.g., `None`, `Pending`).
     pub(crate) fn compile_variant_construct(
         &mut self,

@@ -1,0 +1,11 @@
+def main() -> Int = {
+  let mut x = 0;
+  let inc = (u: Int) -> {
+    x = x + 1;
+    x
+  };
+  inc(0);
+  inc(0);
+  println(x);
+  0
+}

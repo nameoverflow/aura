@@ -10,6 +10,54 @@ use aura_resolve::Resolver;
 use aura_types::TypeChecker;
 use inkwell::context::Context;
 
+fn workspace_root() -> PathBuf {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.pop(); // crates/
+    path.pop(); // workspace root
+    path
+}
+
+fn find_runtime_staticlib() -> Option<PathBuf> {
+    let target_dir = workspace_root().join("target").join("debug");
+    let direct = target_dir.join("libaura_rt.a");
+    if direct.exists() {
+        return Some(direct);
+    }
+
+    let deps_dir = target_dir.join("deps");
+    let entries = fs::read_dir(deps_dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("a")
+            && path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("libaura_rt-"))
+        {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn ensure_runtime_staticlib() -> Result<PathBuf, String> {
+    if let Some(path) = find_runtime_staticlib() {
+        return Ok(path);
+    }
+
+    let status = Command::new("cargo")
+        .current_dir(workspace_root())
+        .args(["build", "-p", "aura_rt"])
+        .status()
+        .map_err(|e| format!("failed to build aura_rt runtime: {e}"))?;
+
+    if !status.success() {
+        return Err("failed to build aura_rt runtime".into());
+    }
+
+    find_runtime_staticlib().ok_or_else(|| "could not locate built libaura_rt.a".into())
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -89,7 +137,7 @@ fn compile(
 
     // Step 4: Type Check
     let checker = TypeChecker::new();
-    let _typed = checker.check(&resolved).map_err(|errors| {
+    let typed = checker.check(&resolved).map_err(|errors| {
         errors
             .iter()
             .map(|e| e.to_string())
@@ -105,6 +153,7 @@ fn compile(
         .unwrap_or_else(|| "main".into());
 
     let mut codegen = CodeGen::new(&context, &module_name);
+    codegen.set_expr_types(typed.expr_types.clone());
     codegen.compile_module(&resolved.module)?;
 
     if emit_ir {
@@ -125,14 +174,21 @@ fn compile(
     let exe_path = output_path
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(source_path).with_extension(""));
+    let runtime_lib = ensure_runtime_staticlib()?;
 
-    let status = Command::new("cc")
-        .args([
-            obj_path.to_str().unwrap(),
-            "-o",
-            exe_path.to_str().unwrap(),
-            "-lm",
-        ])
+    let mut link = Command::new("cc");
+    link.arg(obj_path.to_str().unwrap())
+        .arg(runtime_lib.to_str().unwrap())
+        .arg("-o")
+        .arg(exe_path.to_str().unwrap())
+        .arg("-lm");
+
+    #[cfg(target_os = "linux")]
+    {
+        link.args(["-ldl", "-lpthread", "-lrt", "-lutil"]);
+    }
+
+    let status = link
         .status()
         .map_err(|e| format!("failed to invoke linker: {e}"))?;
 

@@ -43,6 +43,7 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| format!("function '{}' not declared", f.name))?;
 
         self.current_function = Some(function);
+        self.current_fn_name = Some(f.name.clone());
 
         let entry = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry);
@@ -78,11 +79,27 @@ impl<'ctx> CodeGen<'ctx> {
             } else if let Some(val) = result {
                 self.builder.build_return(Some(&val)).unwrap();
             } else {
-                self.builder.build_return(None).unwrap();
+                let zero = self.zero_value_for_type(self.type_to_llvm(&ret_type));
+                self.builder.build_return(Some(&zero)).unwrap();
             }
         }
 
         self.current_function = None;
+        self.current_fn_name = None;
         Ok(())
+    }
+
+    pub(crate) fn zero_value_for_type(
+        &self,
+        ty: inkwell::types::BasicTypeEnum<'ctx>,
+    ) -> inkwell::values::BasicValueEnum<'ctx> {
+        match ty {
+            inkwell::types::BasicTypeEnum::IntType(t) => t.const_zero().into(),
+            inkwell::types::BasicTypeEnum::FloatType(t) => t.const_float(0.0).into(),
+            inkwell::types::BasicTypeEnum::PointerType(t) => t.const_null().into(),
+            inkwell::types::BasicTypeEnum::StructType(t) => t.const_zero().into(),
+            inkwell::types::BasicTypeEnum::ArrayType(t) => t.const_zero().into(),
+            inkwell::types::BasicTypeEnum::VectorType(t) => t.const_zero().into(),
+        }
     }
 }

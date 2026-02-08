@@ -60,6 +60,7 @@ pub struct CodeGen<'ctx> {
     pub(crate) variables: HashMap<String, PointerValue<'ctx>>,
     pub(crate) functions: HashMap<String, FunctionValue<'ctx>>,
     pub(crate) current_function: Option<FunctionValue<'ctx>>,
+    pub(crate) current_fn_name: Option<String>,
     pub(crate) struct_types: HashMap<String, StructInfo<'ctx>>,
     /// Sum type name → SumTypeInfo
     pub(crate) sum_types: HashMap<String, SumTypeInfo<'ctx>>,
@@ -68,12 +69,24 @@ pub struct CodeGen<'ctx> {
     /// Track which loop's break/continue blocks to jump to.
     pub(crate) loop_exit_stack: Vec<inkwell::basic_block::BasicBlock<'ctx>>,
     pub(crate) loop_continue_stack: Vec<inkwell::basic_block::BasicBlock<'ctx>>,
+    pub(crate) expr_types: HashMap<(u32, u32), Type>,
+    pub(crate) closure_type: StructType<'ctx>,
+    pub(crate) lambda_counter: usize,
+    pub(crate) capture_context_stack: Vec<CaptureContext<'ctx>>,
+}
+
+pub(crate) struct CaptureContext<'ctx> {
+    pub(crate) env_ptr: PointerValue<'ctx>, // i8*
+    pub(crate) env_type: StructType<'ctx>,
+    pub(crate) fields: HashMap<String, u32>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
     pub fn new(context: &'ctx Context, module_name: &str) -> Self {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
+        let i8_ptr = context.i8_type().ptr_type(AddressSpace::default());
+        let closure_type = context.struct_type(&[i8_ptr.into(), i8_ptr.into()], false);
 
         let mut cg = Self {
             context,
@@ -82,18 +95,29 @@ impl<'ctx> CodeGen<'ctx> {
             variables: HashMap::new(),
             functions: HashMap::new(),
             current_function: None,
+            current_fn_name: None,
             struct_types: HashMap::new(),
             sum_types: HashMap::new(),
             variant_info: HashMap::new(),
             loop_exit_stack: Vec::new(),
             loop_continue_stack: Vec::new(),
+            expr_types: HashMap::new(),
+            closure_type,
+            lambda_counter: 0,
+            capture_context_stack: Vec::new(),
         };
 
         // Declare printf and strcmp for print/println and string matching
         cg.declare_printf();
         cg.declare_strcmp();
+        cg.declare_malloc();
+        cg.declare_gc_alloc();
 
         cg
+    }
+
+    pub fn set_expr_types(&mut self, expr_types: HashMap<(u32, u32), Type>) {
+        self.expr_types = expr_types;
     }
 
     fn declare_printf(&mut self) {
@@ -111,6 +135,23 @@ impl<'ctx> CodeGen<'ctx> {
             .fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
         let strcmp = self.module.add_function("strcmp", strcmp_type, None);
         self.functions.insert("strcmp".into(), strcmp);
+    }
+
+    fn declare_malloc(&mut self) {
+        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let malloc_type = i8_ptr.fn_type(&[self.context.i64_type().into()], false);
+        let malloc = self.module.add_function("malloc", malloc_type, None);
+        self.functions.insert("malloc".into(), malloc);
+    }
+
+    fn declare_gc_alloc(&mut self) {
+        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let gc_alloc_type =
+            i8_ptr.fn_type(&[self.context.i64_type().into(), i8_ptr.into()], false);
+        let gc_alloc = self
+            .module
+            .add_function("aura_gc_alloc", gc_alloc_type, None);
+        self.functions.insert("aura_gc_alloc".into(), gc_alloc);
     }
 
     pub fn compile_module(&mut self, module: &ast::Module) -> Result<(), String> {
@@ -136,6 +177,11 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         self.module.verify().map_err(|e| e.to_string())
+    }
+
+    pub(crate) fn expr_type(&self, expr: &ast::Expr) -> Option<Type> {
+        let span = expr.span();
+        self.expr_types.get(&(span.start, span.end)).cloned()
     }
 
     pub(crate) fn create_entry_alloca(

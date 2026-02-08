@@ -3,4 +3,7 @@ name = "aura_rt"
 version.workspace = true
 edition.workspace = true
 
+[lib]
+crate-type = ["rlib", "staticlib"]
+
 [dependencies]

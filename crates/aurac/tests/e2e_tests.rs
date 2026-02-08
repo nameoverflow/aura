@@ -218,3 +218,10 @@ fn test_pipeline() {
     // 5 |> double() = 10, 10 |> add(3) = 13
     assert_eq!(lines, vec!["10", "13"]);
 }
+
+#[test]
+fn test_closure_mut_capture() {
+    let (ok, output, _) = compile_and_run("closure_capture_mut.aura");
+    assert!(ok, "program exited with error: {}", output);
+    assert_eq!(output.trim(), "2");
+}

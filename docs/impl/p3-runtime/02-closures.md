@@ -13,12 +13,12 @@ This document covers closure creation, capture analysis, closure conversion for 
 - **P1-02: Generics** — closures may be polymorphic (in effect, via HOFs)
 - **P2-02: Effect Polymorphism** — closures carry effects
 
-## Current Implementation Status (as of February 7, 2026)
+## Current Implementation Status (as of February 8, 2026)
 
 - **Implemented (front-end):** Lambda syntax and basic lambda typing/effect capture are supported in parser/typechecker.
-- **Implemented (front-end foundations):** Closure expressions participate in effect-polymorphic callback analysis.
-- **Partial/Deferred:** Capture analysis, environment-struct generation, closure conversion, and closure call lowering are not implemented in LLVM codegen yet.
-- **Partial/Deferred:** Mutable-capture promotion and closure/GC runtime integration are planned but not wired into generated programs.
+- **Implemented (backend):** Capture analysis, environment-struct generation, closure conversion, and closure call lowering are implemented in LLVM codegen.
+- **Implemented (mutable capture behavior):** Captured variables are shared through closure environments so mutations inside closures are observed by the enclosing scope during execution.
+- **Implemented (runtime integration):** Closure environment/object allocation routes through `aura_gc_alloc`, and compiled binaries link the runtime library.
 
 ## Design Decisions
 

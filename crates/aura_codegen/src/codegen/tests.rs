@@ -1,15 +1,20 @@
 use super::*;
 use aura_lexer::Lexer;
 use aura_parser::Parser;
+use aura_resolve::Resolver;
+use aura_types::TypeChecker;
 
 fn compile_to_ir(input: &str) -> String {
     let mut lexer = Lexer::new(input, 0);
     let tokens = lexer.tokenize();
     let mut parser = Parser::new(tokens);
     let module = parser.parse_module().unwrap();
+    let resolved = Resolver::new().resolve(module.clone()).unwrap();
+    let typed = TypeChecker::new().check(&resolved).unwrap();
 
     let context = Context::create();
     let mut codegen = CodeGen::new(&context, "test");
+    codegen.set_expr_types(typed.expr_types.clone());
     codegen.compile_module(&module).unwrap();
     codegen.print_ir()
 }
@@ -178,7 +183,7 @@ fn test_while_break() {
            let mut x = 0;\n\
            while true {\n\
              x = x + 1;\n\
-             if x == 5 { break } else { 0 }\n\
+             if x == 5 { break } else { () }\n\
            };\n\
            x\n\
          }",
@@ -196,7 +201,7 @@ fn test_for_break() {
         "def main() -> Int = {\n\
            let mut total = 0;\n\
            for i in 0..100 {\n\
-             if i == 5 { break } else { 0 };\n\
+             if i == 5 { break } else { () };\n\
              total = total + i\n\
            };\n\
            total\n\
@@ -215,7 +220,7 @@ fn test_for_continue() {
         "def main() -> Int = {\n\
            let mut total = 0;\n\
            for i in 0..10 {\n\
-             if i == 3 { continue } else { 0 };\n\
+             if i == 3 { continue } else { () };\n\
              total = total + i\n\
            };\n\
            total\n\
