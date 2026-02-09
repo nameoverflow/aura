@@ -10,7 +10,7 @@ Aura is an AI-native programming language compiler. The compiler is a Rust works
 
 ```bash
 cargo build                          # Build all crates
-cargo test --workspace               # Run all ~219 tests
+cargo test --workspace               # Run all ~222 tests
 cargo test -p aura_codegen           # Test a single crate
 cargo test -p aura_types -- test_name  # Run a single test by name
 
@@ -30,22 +30,22 @@ Requires LLVM 14. If non-standard path: `export LLVM_SYS_140_PREFIX=/path/to/llv
 
 ```
 Source string
-  → aura_lexer    (Vec<Token>)
-  → aura_parser   (ast::Module)
-  → aura_resolve  (ResolvedModule: AST + span→DefId references)
-  → aura_types    (TypedModule: span→Type mappings)
-  → aura_codegen  (LLVM IR → .o → linked executable via cc + libaura_rt.a)
+  → aura_parser::parse()  (ast::Module — internally lexes via aura_lexer then parses via Chumsky)
+  → aura_resolve           (ResolvedModule: AST + span→DefId references)
+  → aura_types             (TypedModule: span→Type mappings)
+  → aura_codegen           (LLVM IR → .o → linked executable via cc + libaura_rt.a)
 ```
 
 Each stage consumes the output of the previous. No circular dependencies between crates.
+The lexer and parser both use Chumsky 0.11 parser combinators; `aura_parser::parse(source, file_id)` is the unified entry point.
 
 ### Crate Roles
 
 | Crate | Role |
 |-------|------|
 | `aura_common` | `Interner` (symbol table), `Span` (source locations) |
-| `aura_lexer` | Tokenizer |
-| `aura_parser` | Recursive-descent parser producing `ast::Module` |
+| `aura_lexer` | Chumsky-based tokenizer |
+| `aura_parser` | Chumsky-based parser producing `ast::Module` |
 | `aura_resolve` | Name resolution: binds identifier spans to `DefId`s, maps variants to parent types |
 | `aura_types` | Hindley-Milner type inference, concept (trait) dispatch, effect checking |
 | `aura_codegen` | LLVM IR emission via inkwell; struct/sum type layout; object file output |

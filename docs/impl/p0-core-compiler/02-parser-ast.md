@@ -8,23 +8,26 @@ The parser consumes the token stream from the lexer and produces an Abstract Syn
 
 - **P0-01: Lexer** — token stream input
 
-## Current Implementation Status (as of February 7, 2026)
+## Current Implementation Status (as of February 9, 2026)
 
-- **Implemented:** Pratt-style expression parsing and AST construction with source spans across core syntax (functions, control flow, types, patterns, structs, sum types, and pipelines).
-- **Implemented:** Parser support for P1/P2 surface syntax already landed (concepts, instances, type annotations, effects, contracts, `with`, `?`, lambdas).
+- **Rewritten with Chumsky 0.11:** The parser was rewritten from a hand-written recursive-descent/Pratt parser (~2,600 LOC across 7 files) to a single Chumsky combinator file (`chumsky_parser.rs`, ~785 LOC). The unified entry point is `aura_parser::parse(source, file_id)` which internally lexes then parses. AST types (`ast.rs`) are unchanged.
+- **Implemented:** Full expression parsing with correct precedence via `foldl`/`foldr` combinators, type expression parsing with `recursive()`, pattern parsing with or-patterns, and all item parsers (functions, types, concepts, instances, use/module declarations, type annotations).
+- **Implemented:** Parser support for P1/P2 surface syntax (concepts, instances, type annotations, effects, contracts, `with`, `?`, lambdas).
 - **Implemented (P3 front-end):** `async def` parsing plus concurrency expressions (`parallel`, `race`, `timeout`) with dedicated AST nodes.
-- **Partial/Deferred:** Some parsed constructs are intentionally ahead of backend support and still lower to “not supported yet” in codegen.
+- **Key design notes:** Contract expressions (`requires`/`ensures`) use a restricted sub-parser that collects tokens up to keyword boundaries then re-parses. Sum type vs alias disambiguation uses ordered choice: struct, refined (`where`), multi-variant sum (`|`), single-variant sum (non-primitive UpperIdent), alias. 36 unit tests.
+- **Partial/Deferred:** Some parsed constructs are intentionally ahead of backend support and still lower to "not supported yet" in codegen.
 
 ## Design Decisions
 
 ### Parser Type
 
-**Recursive descent (Pratt parser for expressions).** Reasons:
+**Chumsky 0.11 parser combinators.** The parser was originally a hand-written recursive descent / Pratt parser, then rewritten to use Chumsky combinators for:
 
-- Aura's grammar is LL(1) or LL(2) for most constructs
-- Pratt parsing handles operator precedence naturally
-- Easy to produce good error messages
-- Easy to extend as the language evolves
+- Declarative, composable grammar definitions
+- Automatic error recovery via `Rich` error type
+- `recursive()` for self-referential parsers (expressions, patterns, types)
+- `foldl`/`foldr` for left/right-associative binary operators
+- `.boxed()` at key intermediate points to prevent type explosion and OOM during compilation
 
 ### AST Node Design
 

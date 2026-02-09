@@ -36,8 +36,39 @@ impl Span {
     }
 }
 
+impl std::fmt::Display for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}..{}", self.start, self.end)
+    }
+}
+
 impl Default for Span {
     fn default() -> Self {
         Self::dummy()
+    }
+}
+
+impl chumsky::span::Span for Span {
+    type Context = u32;
+    type Offset = u32;
+
+    fn new(context: u32, range: std::ops::Range<u32>) -> Self {
+        Span {
+            file_id: context,
+            start: range.start,
+            end: range.end,
+        }
+    }
+
+    fn context(&self) -> u32 {
+        self.file_id
+    }
+
+    fn start(&self) -> u32 {
+        self.start
+    }
+
+    fn end(&self) -> u32 {
+        self.end
     }
 }

@@ -10,6 +10,3 @@ aura_resolve = { workspace = true }
 aura_types = { workspace = true }
 inkwell = { workspace = true }
 thiserror = { workspace = true }
-
-[dev-dependencies]
-aura_lexer = { workspace = true }

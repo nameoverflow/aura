@@ -1,8 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use aura_lexer::Lexer;
-use aura_parser::Parser;
 use aura_resolve::Resolver;
 use aura_types::TypeChecker;
 
@@ -31,20 +29,7 @@ fn typecheck_file(path: &Path) -> Result<(), String> {
     let source = fs::read_to_string(path)
         .map_err(|e| format!("failed to read fixture '{}': {}", path.display(), e))?;
 
-    let mut lexer = Lexer::new(&source, 0);
-    let tokens = lexer.tokenize();
-
-    for tok in &tokens {
-        if let aura_lexer::TokenKind::Error(msg) = &tok.kind {
-            return Err(format!(
-                "lexer error at {}..{}: {}",
-                tok.span.start, tok.span.end, msg
-            ));
-        }
-    }
-
-    let mut parser = Parser::new(tokens);
-    let module = parser.parse_module().map_err(|errors| {
+    let module = aura_parser::parse(&source, 0).map_err(|errors| {
         errors
             .iter()
             .map(|e| e.to_string())

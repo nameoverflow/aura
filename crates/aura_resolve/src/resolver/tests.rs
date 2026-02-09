@@ -1,12 +1,7 @@
 use super::*;
-use aura_lexer::Lexer;
-use aura_parser::Parser;
 
 fn resolve_str(input: &str) -> Result<ResolvedModule, Vec<ResolveError>> {
-    let mut lexer = Lexer::new(input, 0);
-    let tokens = lexer.tokenize();
-    let mut parser = Parser::new(tokens);
-    let module = parser.parse_module().unwrap();
+    let module = aura_parser::parse(input, 0).unwrap();
     let resolver = Resolver::new();
     resolver.resolve(module)
 }

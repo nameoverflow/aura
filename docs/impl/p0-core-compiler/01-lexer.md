@@ -8,11 +8,12 @@ The lexer (tokenizer) converts raw Aura source text into a stream of tokens. Thi
 
 None. This is the entry point.
 
-## Current Implementation Status (as of February 7, 2026)
+## Current Implementation Status (as of February 9, 2026)
 
-- **Implemented:** Full tokenization for Aura keywords, identifiers, operators, delimiters, comments/doc comments, numeric literals (including hex), and string literals.
+- **Implemented:** Full tokenization for Aura keywords, identifiers, operators, delimiters, comments/doc comments, numeric literals (including hex/bin/oct), and string literals.
 - **Implemented:** String interpolation lexing with fragment tokens and escaped braces (`{{`, `}}`), plus dedicated tokens for interpolation boundaries.
 - **Implemented:** Keywords added for newer features (`async`, `parallel`, `race`, `timeout`, `yield`) and covered by lexer tests.
+- **Rewritten with Chumsky 0.11:** The lexer was rewritten from a hand-written state machine to declarative Chumsky parser combinators. The public API is `aura_lexer::lex(source, file_id) -> Vec<Token>`. String interpolation is handled as a post-pass (`interp.rs`) that expands `StringLit` tokens containing `{` into `StringStart`/`StringMid`/`StringEnd` sequences. 26 unit tests.
 - **Partial/Deferred:** Optional extensions from open questions (for example raw string variants) remain deferred.
 
 ## Design Decisions

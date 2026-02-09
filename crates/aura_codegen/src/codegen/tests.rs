@@ -1,14 +1,9 @@
 use super::*;
-use aura_lexer::Lexer;
-use aura_parser::Parser;
 use aura_resolve::Resolver;
 use aura_types::TypeChecker;
 
 fn compile_to_ir(input: &str) -> String {
-    let mut lexer = Lexer::new(input, 0);
-    let tokens = lexer.tokenize();
-    let mut parser = Parser::new(tokens);
-    let module = parser.parse_module().unwrap();
+    let module = aura_parser::parse(input, 0).unwrap();
     let resolved = Resolver::new().resolve(module.clone()).unwrap();
     let typed = TypeChecker::new().check(&resolved).unwrap();
 

@@ -4,8 +4,6 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use aura_codegen::CodeGen;
-use aura_lexer::Lexer;
-use aura_parser::Parser;
 use aura_resolve::Resolver;
 use aura_types::TypeChecker;
 use inkwell::context::Context;
@@ -101,23 +99,8 @@ fn compile(
     no_link: bool,
     output_path: Option<String>,
 ) -> Result<(), String> {
-    // Step 1: Lex
-    let mut lexer = Lexer::new(source, 0);
-    let tokens = lexer.tokenize();
-
-    // Check for lexer errors
-    for tok in &tokens {
-        if let aura_lexer::TokenKind::Error(msg) = &tok.kind {
-            return Err(format!(
-                "lexer error at {}..{}: {}",
-                tok.span.start, tok.span.end, msg
-            ));
-        }
-    }
-
-    // Step 2: Parse
-    let mut parser = Parser::new(tokens);
-    let module = parser.parse_module().map_err(|errors| {
+    // Step 1+2: Lex & Parse
+    let module = aura_parser::parse(source, 0).map_err(|errors| {
         errors
             .iter()
             .map(|e| e.to_string())

@@ -4,4 +4,5 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+chumsky = { workspace = true }
 string-interner = { workspace = true }

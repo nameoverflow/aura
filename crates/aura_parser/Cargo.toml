@@ -6,3 +6,4 @@ edition.workspace = true
 [dependencies]
 aura_common = { workspace = true }
 aura_lexer = { workspace = true }
+chumsky = { workspace = true }

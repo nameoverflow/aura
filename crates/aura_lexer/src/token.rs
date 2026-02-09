@@ -105,6 +105,20 @@ pub enum TokenKind {
     Error(String),
 }
 
+impl std::fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenKind::Ident(s) => write!(f, "{}", s),
+            TokenKind::UpperIdent(s) => write!(f, "{}", s),
+            TokenKind::IntLit(n) => write!(f, "{}", n),
+            TokenKind::FloatLit(n) => write!(f, "{}", n),
+            TokenKind::StringLit(s) => write!(f, "\"{}\"", s),
+            TokenKind::Error(s) => write!(f, "error: {}", s),
+            _ => write!(f, "{:?}", self),
+        }
+    }
+}
+
 impl TokenKind {
     pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         match s {

@@ -4,8 +4,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use aura_codegen::CodeGen;
-use aura_lexer::Lexer;
-use aura_parser::Parser;
 use aura_resolve::ResolvedModule;
 use aura_resolve::Resolver;
 use aura_types::{TypeChecker, TypedModule};
@@ -188,20 +186,7 @@ fn check_file(source_path: &Path) -> Result<(ResolvedModule, TypedModule), Strin
     let source = fs::read_to_string(source_path)
         .map_err(|e| format!("error: could not read '{}': {}", source_path.display(), e))?;
 
-    let mut lexer = Lexer::new(&source, 0);
-    let tokens = lexer.tokenize();
-
-    for tok in &tokens {
-        if let aura_lexer::TokenKind::Error(msg) = &tok.kind {
-            return Err(format!(
-                "lexer error at {}..{}: {}",
-                tok.span.start, tok.span.end, msg
-            ));
-        }
-    }
-
-    let mut parser = Parser::new(tokens);
-    let module = parser.parse_module().map_err(|errors| {
+    let module = aura_parser::parse(&source, 0).map_err(|errors| {
         errors
             .iter()
             .map(|e| e.to_string())

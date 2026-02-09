@@ -22,13 +22,13 @@ P0 ──> P1 ──> P2 ──> P3
 
 P0 is the absolute foundation (including basic LLVM codegen). P1 builds the full type system on P0's base. P2 adds the effect and error layers. P3 adds the GC runtime, closures, and async. P4 is largely parallelizable once P2 is underway.
 
-## Current Status (as of February 8, 2026)
+## Current Status (as of February 9, 2026)
 
-**219 tests** (35 codegen + 25 lexer + 36 parser + 26 resolve + 66 types + 2 P1 fixtures + 2 P2 fixtures + 2 P3 fixtures + 3 runtime + 20 E2E + 2 P3 compile-pipeline), all passing.
+**222 tests** (35 codegen + 26 lexer + 36 parser + 26 resolve + 66 types + 3 runtime + 2 P1 fixtures + 2 P2 fixtures + 2 P3 fixtures + 4 P3 compile-pipeline + 20 E2E), all passing.
 
 | Tier | Status | Notes |
 |------|--------|-------|
-| **P0** | **Complete** | Lexer, parser, name resolution, type inference, LLVM codegen, CLI — all working. Supports functions, arithmetic, comparisons, if/else, while/for, break/continue, match (int/bool/string/constructor patterns + guards), structs, sum types, pipeline `\|>`, print/println. 19 E2E tests compile and run native binaries. |
+| **P0** | **Complete** | Lexer and parser rewritten with Chumsky 0.11 parser combinators. `aura_parser::parse()` is the unified entry point. Name resolution, type inference, LLVM codegen, CLI — all working. Supports functions, arithmetic, comparisons, if/else, while/for, break/continue, match (int/bool/string/constructor patterns + guards), structs, sum types, pipeline `\|>`, print/println. 20 E2E tests compile and run native binaries. |
 | **P1** | **Front-end complete** | Parser/resolver/typechecker support ADTs, generics (implicit quantification + `forall` bounds), concepts (definitions, instances, superclass checks, operator desugaring, associated types), methods (inherent + concept + disambiguation), pattern matching (exhaustiveness + redundancy checking), type aliases (transparent), default method body type-checking. Codegen for P1 features (method dispatch, monomorphization, or-patterns, struct patterns) is deferred to P3/P4. |
 | **P2** | **Front-end complete** | Effect system (9 built-in capabilities, hierarchy, pure-function enforcement), effect polymorphism (effect variables, callback propagation), `?` operator (Result + Option, auto-From derivation), refined types (constraint grammar validation, `.new()` / `.value` typing, compile-time literal constraint checking), contracts (`requires`/`ensures` Bool typing, `result` variable). Runtime/codegen enforcement deferred to P3/P4. |
 | **P3** | **Complete (Current Baseline)** | Runtime crate (`aura_rt`) is linked into generated binaries, closure env/object allocation uses `aura_gc_alloc`, closure conversion/capture lowering is implemented in LLVM codegen (including mutable capture synchronization), `Runtime.block_on` + `parallel`/`race`/`timeout` lower through backend paths, and P3 fixtures now have compile-pipeline coverage in `aurac` tests. |

@@ -25,6 +25,7 @@ aura_resolve = { path = "crates/aura_resolve" }
 aura_types = { path = "crates/aura_types" }
 aura_codegen = { path = "crates/aura_codegen" }
 aura_rt = { path = "crates/aura_rt" }
+chumsky = "0.11"
 thiserror = "2"
 string-interner = "0.17"
 inkwell = { version = "0.5", features = ["llvm14-0"] }

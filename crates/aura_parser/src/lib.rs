@@ -1,5 +1,5 @@
 pub mod ast;
-pub mod parser;
+pub mod chumsky_parser;
 
 pub use ast::*;
-pub use parser::Parser;
+pub use chumsky_parser::parse;

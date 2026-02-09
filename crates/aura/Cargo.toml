@@ -8,7 +8,6 @@ name = "aura"
 path = "src/main.rs"
 
 [dependencies]
-aura_lexer = { workspace = true }
 aura_parser = { workspace = true }
 aura_resolve = { workspace = true }
 aura_types = { workspace = true }

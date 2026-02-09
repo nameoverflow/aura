@@ -1,5 +1,6 @@
-use super::*;
 use crate::token::TokenKind::*;
+use crate::Lexer;
+use aura_common::Span;
 
 fn lex(source: &str) -> Vec<crate::token::TokenKind> {
     let mut lexer = Lexer::new(source, 0);

@@ -1,13 +1,8 @@
 use super::*;
-use aura_lexer::Lexer;
-use aura_parser::Parser;
 use aura_resolve::Resolver;
 
 fn typecheck_str(input: &str) -> Result<TypedModule, Vec<TypeError>> {
-    let mut lexer = Lexer::new(input, 0);
-    let tokens = lexer.tokenize();
-    let mut parser = Parser::new(tokens);
-    let module = parser.parse_module().unwrap();
+    let module = aura_parser::parse(input, 0).unwrap();
     let resolver = Resolver::new();
     let resolved = resolver.resolve(module).unwrap();
     let checker = TypeChecker::new();

@@ -6,6 +6,3 @@ edition.workspace = true
 [dependencies]
 aura_common = { workspace = true }
 aura_parser = { workspace = true }
-
-[dev-dependencies]
-aura_lexer = { workspace = true }
